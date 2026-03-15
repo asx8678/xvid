@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Tweet Video Saver — Settings</h1>
+
+    <section class="setting">
+      <label for="defaultQuality">Default download quality</label>
+      <select id="defaultQuality">
+        <option value="highest">Highest available</option>
+        <option value="1080">1080p</option>
+        <option value="720">720p</option>
+        <option value="480">480p</option>
+        <option value="360">360p</option>
+      </select>
+      <p class="hint">The in-page download button will use this quality. You can always pick a different quality in the popup.</p>
+    </section>
+
+    <div id="status" class="status hidden">Settings saved</div>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

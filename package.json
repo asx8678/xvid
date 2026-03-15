@@ -1,0 +1,13 @@
+{
+  "name": "tweet-video-saver",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension to save videos from X.com and Twitter posts",
+  "scripts": {
+    "build": "mkdir -p dist && cd dist && rm -f tweet-video-saver.zip && cd .. && zip -r dist/tweet-video-saver.zip manifest.json background/ content/ popup/ options/ lib/ icons/ _locales/ -x '*.DS_Store'",
+    "lint": "echo 'No linter configured yet'",
+    "test": "echo 'No tests configured yet'"
+  },
+  "author": "",
+  "license": "MIT"
+}

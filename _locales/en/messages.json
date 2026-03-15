@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Tweet Video Saver",
+    "description": "Extension name shown in browser"
+  },
+  "extDescription": {
+    "message": "Save videos from X.com and Twitter posts in your preferred quality. One-click download with quality selection and history.",
+    "description": "Extension description for Chrome Web Store"
+  }
+}

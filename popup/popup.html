@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Tweet Video Saver</h1>
+      <div id="status" class="status ready" role="status" aria-live="polite">Ready</div>
+    </header>
+
+    <section id="disclaimer" class="disclaimer">
+      <p>Only download videos you have the right to save. Respect copyright and content creators' rights.</p>
+      <button id="dismissDisclaimer" class="dismiss-btn">Dismiss</button>
+    </section>
+
+    <section class="input-section">
+      <label for="urlInput">Tweet URL or ID</label>
+      <div class="input-row">
+        <input type="text" id="urlInput" placeholder="Paste x.com or twitter.com URL..." autocomplete="off">
+        <button id="fetchBtn">Fetch</button>
+      </div>
+    </section>
+
+    <section id="variantsSection" class="variants-section hidden">
+      <div id="videoSelectRow" class="hidden" style="margin-bottom: 8px;">
+        <label for="videoSelect">Video</label>
+        <div class="input-row">
+          <select id="videoSelect"></select>
+        </div>
+      </div>
+      <label for="qualitySelect">Quality</label>
+      <div class="input-row">
+        <select id="qualitySelect"></select>
+        <button id="downloadBtn">Download</button>
+      </div>
+      <div id="progressRow" class="progress-row hidden">
+        <progress id="progressBar" max="100" value="0"></progress>
+        <span id="progressText" class="progress-text">0%</span>
+      </div>
+      <div id="retryRow" class="retry-row hidden">
+        <button id="retryBtn" class="retry-btn">Retry Download</button>
+      </div>
+    </section>
+
+    <section class="history-section">
+      <h2>Recent Downloads</h2>
+      <ul id="historyList"></ul>
+      <p id="emptyHistory" class="empty">No downloads yet</p>
+    </section>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
