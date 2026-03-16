@@ -1,5 +1,7 @@
 const DOWNLOAD_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-5 5a1 1 0 0 1-1.414 0l-5-5a1 1 0 1 1 1.414-1.414L11 13.586V3a1 1 0 0 1 1-1zM5 20a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5z"/></svg>`;
 
+const BUTTON_RESET_MS = 4000;
+
 // --- Tooltip (appended to document.body to avoid overflow:hidden clipping) ---
 
 let activeTooltip = null;
@@ -19,12 +21,12 @@ function showTooltip(anchor, text) {
   tooltip.style.transform = "translateX(-50%) translateY(-100%)";
   document.body.appendChild(tooltip);
 
-  // Force reflow then animate in
+  // Force reflow so the CSS transition triggers on the newly-appended element
   tooltip.offsetHeight;
   tooltip.classList.add("xvd-tooltip-visible");
 
   activeTooltip = tooltip;
-  tooltipTimeout = setTimeout(hideTooltip, 4000);
+  tooltipTimeout = setTimeout(hideTooltip, BUTTON_RESET_MS);
 }
 
 function hideTooltip() {
@@ -39,47 +41,49 @@ function hideTooltip() {
 }
 
 // --- Theme detection ---
+// X.com uses three themes with distinct body background colors:
+//   Light:      rgb(255, 255, 255)
+//   Dim:        rgb(21, 32, 43)
+//   Lights Out: rgb(0, 0, 0)
+
+let lastIconColor = null;
 
 function detectAndApplyTheme() {
   const bg = getComputedStyle(document.body).backgroundColor;
-  let color;
+  let iconColor;
   if (bg.includes("255, 255, 255")) {
-    color = "rgb(83, 100, 113)";   // Light
+    iconColor = "rgb(83, 100, 113)";   // Light theme icon color
   } else if (bg.includes("21, 32, 43")) {
-    color = "rgb(139, 148, 158)";  // Dim
+    iconColor = "rgb(139, 148, 158)";  // Dim theme icon color
   } else {
-    color = "rgb(113, 118, 123)";  // Lights Out / default
+    iconColor = "rgb(113, 118, 123)";  // Lights Out / default icon color
   }
-  document.documentElement.style.setProperty("--xvd-icon-color", color);
+  if (iconColor !== lastIconColor) {
+    lastIconColor = iconColor;
+    document.documentElement.style.setProperty("--xvd-icon-color", iconColor);
+  }
 }
 
 // --- Tweet helpers ---
 
-function getTweetId(article) {
+function getAllTweetIds(article) {
   // Prefer the timestamp link — it always points to the outer tweet, not a quoted tweet
   const timeLink = article.querySelector('a[href*="/status/"] time');
+  let primary = null;
   if (timeLink) {
     const link = timeLink.closest("a");
     const match = link?.href.match(/\/status\/(\d+)/);
-    if (match) return match[1];
+    if (match) primary = match[1];
   }
 
-  // Fallback: first status link
   const links = article.querySelectorAll('a[href*="/status/"]');
-  for (const link of links) {
-    const match = link.href.match(/\/status\/(\d+)/);
-    if (match) return match[1];
-  }
-  return null;
-}
-
-function getAllTweetIds(article) {
-  const primary = getTweetId(article);
   const ids = new Set();
-  const links = article.querySelectorAll('a[href*="/status/"]');
   for (const link of links) {
     const match = link.href.match(/\/status\/(\d+)/);
-    if (match && match[1] !== primary) ids.add(match[1]);
+    if (match) {
+      if (!primary) primary = match[1];
+      else if (match[1] !== primary) ids.add(match[1]);
+    }
   }
   return { primary, fallbacks: [...ids] };
 }
@@ -96,6 +100,33 @@ function findAllButtonsForTweet(tweetId) {
     if (btn) buttons.push(btn);
   }
   return buttons;
+}
+
+function findMostVisibleVideoArticle() {
+  const articles = document.querySelectorAll("article");
+  const viewportCenter = window.innerHeight / 2;
+  let best = null;
+  let closestDistance = Infinity;
+  for (const article of articles) {
+    if (!hasVideo(article)) continue;
+    const rect = article.getBoundingClientRect();
+    if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+    const articleCenter = rect.top + rect.height / 2;
+    const dist = Math.abs(articleCenter - viewportCenter);
+    if (dist < closestDistance) {
+      closestDistance = dist;
+      best = article;
+    }
+  }
+  return best;
+}
+
+// --- Button state ---
+
+function resetButton(btn) {
+  btn.classList.remove("xvd-loading", "xvd-success", "xvd-error");
+  btn.setAttribute("aria-label", "Download video");
+  btn.title = "Download video";
 }
 
 // --- Button ---
@@ -136,7 +167,7 @@ function createDownloadButton(tweetId, fallbackTweetIds) {
       if (chrome.runtime.lastError) {
         btn.classList.add("xvd-error");
         showTooltip(btn, "Extension restarted \u2014 please reload the page");
-        setTimeout(() => btn.classList.remove("xvd-error"), 4000);
+        setTimeout(() => resetButton(btn), BUTTON_RESET_MS);
         return;
       }
 
@@ -144,15 +175,14 @@ function createDownloadButton(tweetId, fallbackTweetIds) {
         btn.classList.add("xvd-success");
         btn.setAttribute("aria-label", "Download started");
         btn.title = "Download started";
+        if (response.warnings?.length) {
+          showTooltip(btn, response.warnings[0]);
+        }
       } else {
         btn.classList.add("xvd-error");
         showTooltip(btn, response?.error || "Download failed");
       }
-      setTimeout(() => {
-        btn.classList.remove("xvd-success", "xvd-error");
-        btn.setAttribute("aria-label", "Download video");
-        btn.title = "Download video";
-      }, 4000);
+      setTimeout(() => resetButton(btn), BUTTON_RESET_MS);
     });
   });
 
@@ -198,11 +228,7 @@ chrome.runtime.onMessage.addListener((message) => {
       btn.classList.remove("xvd-loading");
       btn.classList.add("xvd-success");
       btn.title = "Download complete";
-      setTimeout(() => {
-        btn.classList.remove("xvd-success");
-        btn.setAttribute("aria-label", "Download video");
-        btn.title = "Download video";
-      }, 4000);
+      setTimeout(() => resetButton(btn), BUTTON_RESET_MS);
     }
   }
 
@@ -211,13 +237,20 @@ chrome.runtime.onMessage.addListener((message) => {
     for (const btn of buttons) {
       btn.classList.remove("xvd-loading", "xvd-success");
       btn.classList.add("xvd-error");
-      setTimeout(() => {
-        btn.classList.remove("xvd-error");
-        btn.setAttribute("aria-label", "Download video");
-      }, 4000);
+      setTimeout(() => resetButton(btn), BUTTON_RESET_MS);
     }
     if (buttons.length > 0) {
       showTooltip(buttons[0], message.error || "Download failed");
+    }
+  }
+
+  if (message.action === "triggerDownload") {
+    const article = findMostVisibleVideoArticle();
+    if (article) {
+      const btn = article.querySelector(".xvd-download-btn");
+      if (btn && !btn.classList.contains("xvd-loading")) {
+        btn.click();
+      }
     }
   }
 });

@@ -1,61 +1,40 @@
 import { fetchTweetVideoData } from "../lib/api.js";
+import { isAllowedVideoUrl } from "../lib/video-extractor.js";
+import { sanitizeFilenameComponent, pickVariantByQuality } from "../lib/utils.js";
+import {
+  SETTINGS_KEY, HISTORY_KEY, PENDING_KEY, DEFAULT_SETTINGS, AUTH_API_WARNING,
+} from "../lib/constants.js";
 
-const HISTORY_KEY = "xvd_download_history";
-const PENDING_KEY = "xvd_pending_downloads";
 const MAX_HISTORY = 10;
 const VARIANT_CACHE_TTL = 5 * 60 * 1000;
 const MAX_CACHE_SIZE = 50;
 
-const ALLOWED_VIDEO_HOSTS = ["video.twimg.com"];
-
-const DEFAULT_SETTINGS = { defaultQuality: "highest" };
-
 async function getSettings() {
   try {
-    const data = await chrome.storage.sync.get("xvd_settings");
-    return { ...DEFAULT_SETTINGS, ...data.xvd_settings };
+    const data = await chrome.storage.sync.get(SETTINGS_KEY);
+    return { ...DEFAULT_SETTINGS, ...data[SETTINGS_KEY] };
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
-function pickVariantByQuality(variants, quality) {
-  if (quality === "highest" || !quality) return variants[0]; // already sorted by bitrate desc
-  // Match by resolution height
-  const target = parseInt(quality);
-  if (!target) return variants[0];
-  const match = variants.find(v => {
-    const h = parseInt((v.resolution || "").split("x")[1]);
-    return h && h <= target;
-  });
-  return match || variants[variants.length - 1]; // Fallback to lowest if target is below all
-}
-
 const variantCache = new Map();
-let historyLock = Promise.resolve();
-let pendingLock = Promise.resolve();
 
-function sanitizeFilenameComponent(str) {
-  return str.replace(/[^a-zA-Z0-9_-]/g, "_") || "unknown";
+// --- Promise-based mutex helper ---
+
+function createMutex() {
+  let chain = Promise.resolve();
+  return function withLock(fn) {
+    const result = chain.then(fn);
+    chain = result.catch(() => {});
+    return result;
+  };
 }
 
-function isAllowedVideoUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" &&
-      ALLOWED_VIDEO_HOSTS.some(d => parsed.hostname === d || parsed.hostname.endsWith("." + d));
-  } catch {
-    return false;
-  }
-}
+const withPendingLock = createMutex();
+const withHistoryLock = createMutex();
 
-// --- Pending downloads (persisted + mutex-protected to prevent TOCTOU races) ---
-
-function withPendingLock(fn) {
-  const result = pendingLock.then(fn);
-  pendingLock = result.catch(() => {});
-  return result;
-}
+// --- Pending downloads (persisted + mutex-protected) ---
 
 function savePendingDownload(downloadId, entry) {
   return withPendingLock(async () => {
@@ -83,17 +62,16 @@ function getAndRemovePendingDownload(downloadId) {
 // --- Event listeners ---
 
 chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log("[XVD] X Video Downloader installed/updated:", details.reason);
-
-  if (details.reason === "update") {
-    // Clear cached queryId to avoid stale GraphQL endpoints
-    await chrome.storage.local.remove("xvd_queryId");
-  }
-
-  // Set schema version for future migrations
-  const data = await chrome.storage.local.get("xvd_schema_version");
-  if (!data.xvd_schema_version) {
-    await chrome.storage.local.set({ xvd_schema_version: 1 });
+  try {
+    if (details.reason === "update") {
+      await chrome.storage.local.remove("xvd_queryId");
+    }
+    const data = await chrome.storage.local.get("xvd_schema_version");
+    if (!data.xvd_schema_version) {
+      await chrome.storage.local.set({ xvd_schema_version: 1 });
+    }
+  } catch (e) {
+    console.warn("[XVD] onInstalled error:", e.message);
   }
 });
 
@@ -106,7 +84,7 @@ chrome.downloads.onChanged.addListener(async (delta) => {
     if (!entry) return;
 
     if (delta.state.current === "complete") {
-      await addToHistory(entry);
+      if (!entry.disableHistory) await addToHistory(entry);
       broadcastStatus({ action: "downloadComplete", tweetId: entry.tweetId, success: true });
     } else {
       broadcastStatus({ action: "downloadFailed", tweetId: entry.tweetId, error: "Download interrupted" });
@@ -132,27 +110,67 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
+
+  if (message.action === "clearHistory") {
+    withHistoryLock(() => chrome.storage.local.set({ [HISTORY_KEY]: [] }))
+      .then(() => sendResponse({ success: true }))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
 });
 
-// --- Handlers ---
+// --- Keyboard shortcut ---
 
-async function handleDownload(tweetId, selectedVariant, videoIndex = 0, fallbackTweetIds = []) {
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "download-video") return;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !tab.url?.match(/https:\/\/(x\.com|twitter\.com)\//)) return;
+    chrome.tabs.sendMessage(tab.id, { action: "triggerDownload" }).catch(() => {});
+  } catch {
+    // Tab may not be on X.com
+  }
+});
+
+// --- Helpers ---
+
+function cacheVariants(tweetId, data) {
+  if (variantCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = variantCache.keys().next().value;
+    variantCache.delete(oldestKey);
+  }
+  variantCache.set(tweetId, { data, timestamp: Date.now() });
+}
+
+async function fetchWithFallbacks(tweetId, fallbackTweetIds = [], settings = null) {
+  if (!settings) settings = await getSettings();
+  const apiOpts = { syndicationOnly: settings.syndicationOnly };
+
   let data;
   const cached = variantCache.get(tweetId);
   if (cached && Date.now() - cached.timestamp < VARIANT_CACHE_TTL) {
+    // Move to end for LRU eviction
+    variantCache.delete(tweetId);
+    variantCache.set(tweetId, cached);
     data = cached.data;
   } else {
-    data = await fetchTweetVideoData(tweetId);
+    try {
+      data = await fetchTweetVideoData(tweetId, apiOpts);
+      if (data?.videos?.length) cacheVariants(tweetId, data);
+    } catch (primaryError) {
+      // Primary fetch failed — try fallbacks before giving up
+      if (fallbackTweetIds.length === 0) throw primaryError;
+      data = null;
+    }
   }
 
-  // If primary tweet has no video, try fallback IDs (e.g. quoted tweet)
   if (!data?.videos?.length && fallbackTweetIds.length > 0) {
-    for (const fbId of fallbackTweetIds) {
+    for (const fallbackId of fallbackTweetIds) {
       try {
-        data = await fetchTweetVideoData(fbId);
+        data = await fetchTweetVideoData(fallbackId, apiOpts);
         if (data?.videos?.length) {
-          tweetId = fbId; // Use the fallback ID for filename
-          break;
+          cacheVariants(fallbackId, data);
+          return { data, tweetId: fallbackId };
         }
       } catch {
         // Continue to next fallback
@@ -163,6 +181,26 @@ async function handleDownload(tweetId, selectedVariant, videoIndex = 0, fallback
   if (!data?.videos?.length) {
     throw new Error("No video found in tweet");
   }
+  return { data, tweetId };
+}
+
+// --- Handlers ---
+
+function buildFilename(settings, username, resolvedTweetId, resolution) {
+  if (settings.anonymousFilenames) {
+    // Slice to "YYYY-MM-DDTHH-MM-SS" (19 chars from ISO string with colons/dots replaced)
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `video_${ts}_${resolution}.mp4`;
+  }
+  const safeUsername = sanitizeFilenameComponent(username);
+  return `@${safeUsername}_${resolvedTweetId}_${resolution}.mp4`;
+}
+
+async function handleDownload(tweetId, selectedVariant = null, videoIndex = 0, fallbackTweetIds = []) {
+  const settings = await getSettings();
+  const result = await fetchWithFallbacks(tweetId, fallbackTweetIds, settings);
+  const data = result.data;
+  const resolvedTweetId = result.tweetId;
 
   const video = data.videos[videoIndex] || data.videos[0];
   if (!video?.variants?.length) {
@@ -173,8 +211,6 @@ async function handleDownload(tweetId, selectedVariant, videoIndex = 0, fallback
   if (selectedVariant) {
     variant = video.variants.find(v => v.url === selectedVariant.url) || video.variants[0];
   } else {
-    // Apply default quality setting
-    const settings = await getSettings();
     variant = pickVariantByQuality(video.variants, settings.defaultQuality);
   }
 
@@ -183,57 +219,39 @@ async function handleDownload(tweetId, selectedVariant, videoIndex = 0, fallback
   }
 
   const resolution = sanitizeFilenameComponent(variant.resolution || "best");
-  const username = sanitizeFilenameComponent(data.username);
-  const filename = `@${username}_${tweetId}_${resolution}.mp4`;
+  const filename = buildFilename(settings, data.username, resolvedTweetId, resolution);
 
-  const downloadId = await chrome.downloads.download({
-    url: variant.url,
-    filename,
-  });
+  const warnings = [];
+  if (data.apiSource === "graphql") {
+    warnings.push(AUTH_API_WARNING);
+  }
+
+  const downloadId = await chrome.downloads.download({ url: variant.url, filename });
+  if (downloadId == null) {
+    throw new Error("Download was blocked by the browser");
+  }
 
   await savePendingDownload(downloadId, {
-    tweetId,
+    tweetId: resolvedTweetId,
     username: data.username,
     resolution,
     filename,
     timestamp: Date.now(),
+    disableHistory: settings.disableHistory,
   });
 
-  return { success: true, downloadId, filename };
+  return { success: true, downloadId, filename, warnings };
 }
 
 async function handleGetVariants(tweetId, fallbackTweetIds = []) {
-  let data = await fetchTweetVideoData(tweetId);
-
-  if (!data?.videos?.length && fallbackTweetIds.length > 0) {
-    for (const fbId of fallbackTweetIds) {
-      try {
-        data = await fetchTweetVideoData(fbId);
-        if (data?.videos?.length) {
-          tweetId = fbId;
-          break;
-        }
-      } catch {
-        // Continue to next fallback
-      }
-    }
-  }
-
-  if (!data?.videos?.length) {
-    throw new Error("No video found in tweet");
-  }
-
-  if (variantCache.size >= MAX_CACHE_SIZE) {
-    const oldestKey = variantCache.keys().next().value;
-    variantCache.delete(oldestKey);
-  }
-  variantCache.set(tweetId, { data, timestamp: Date.now() });
+  const result = await fetchWithFallbacks(tweetId, fallbackTweetIds);
 
   return {
     success: true,
-    videos: data.videos,
-    username: data.username,
-    tweetId: data.tweetId,
+    videos: result.data.videos,
+    username: result.data.username,
+    tweetId: result.data.tweetId,
+    apiSource: result.data.apiSource,
   };
 }
 
@@ -245,13 +263,12 @@ async function getHistory() {
 }
 
 async function addToHistory(entry) {
-  historyLock = historyLock.then(async () => {
+  return withHistoryLock(async () => {
     const history = await getHistory();
     history.unshift(entry);
     if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
     await chrome.storage.local.set({ [HISTORY_KEY]: history });
-  }).catch(e => console.warn("[XVD] History write error:", e.message));
-  return historyLock;
+  });
 }
 
 async function broadcastStatus(message) {

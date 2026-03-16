@@ -1,15 +1,5 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 body {
   width: 350px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 14px;
-  color: #e7e9ea;
-  background: #15202b;
 }
 
 @media (prefers-color-scheme: light) {
@@ -42,6 +32,9 @@ body {
   .dismiss-btn { color: #536471 !important; }
   .dismiss-btn:hover { color: #0f1419 !important; }
   progress::-webkit-progress-bar { background: #eff3f4 !important; }
+  .footer { border-color: #eff3f4 !important; }
+  .api-warning { background: rgba(145, 94, 0, 0.1) !important; color: rgb(145, 94, 0) !important; }
+  .status.warning { background: rgba(145, 94, 0, 0.15) !important; color: rgb(145, 94, 0) !important; }
 }
 
 .container {
@@ -123,7 +116,7 @@ input, select {
   outline: none;
 }
 
-input:focus, select:focus {
+input:focus-visible, select:focus-visible {
   border-color: rgb(29, 155, 240);
 }
 
@@ -152,12 +145,30 @@ button:disabled {
   margin-bottom: 12px;
 }
 
-.hidden {
-  display: none;
-}
-
 .history-section {
   margin-top: 16px;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.clear-history-btn {
+  background: none;
+  border: none;
+  color: rgb(139, 148, 158);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.clear-history-btn:hover {
+  color: rgb(244, 33, 46);
+  background: rgba(244, 33, 46, 0.1);
 }
 
 #historyList {
@@ -269,6 +280,31 @@ progress::-webkit-progress-value {
   background: rgba(244, 33, 46, 0.25);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+.video-select-row {
+  margin-bottom: 8px;
+}
+
+.footer {
+  margin-top: 16px;
+  padding-top: 12px;
+}
+
+.footer-links {
+  display: flex;
+  gap: 12px;
+}
+
+.status.warning {
+  background: rgba(255, 173, 31, 0.2);
+  color: rgb(255, 173, 31);
+}
+
+.api-warning {
+  font-size: 11px;
+  color: rgb(255, 173, 31);
+  background: rgba(255, 173, 31, 0.1);
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  line-height: 1.3;
 }

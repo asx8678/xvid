@@ -1,3 +1,6 @@
+import { parseTweetId, formatDuration, formatTimeAgo } from "../lib/utils.js";
+import { HISTORY_KEY, DISCLAIMER_KEY, AUTH_API_WARNING } from "../lib/constants.js";
+
 const urlInput = document.getElementById("urlInput");
 const fetchBtn = document.getElementById("fetchBtn");
 const variantsSection = document.getElementById("variantsSection");
@@ -15,22 +18,17 @@ const retryRow = document.getElementById("retryRow");
 const retryBtn = document.getElementById("retryBtn");
 const disclaimer = document.getElementById("disclaimer");
 const dismissDisclaimer = document.getElementById("dismissDisclaimer");
+const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const apiWarning = document.getElementById("apiWarning");
 
 let currentVideos = [];
 let currentTweetId = "";
-let currentUsername = "";
 let fetchGeneration = 0;
 let lastDownloadParams = null;
 let progressInterval = null;
 
-function parseTweetId(input) {
-  input = input.trim();
-  // Bare tweet ID
-  if (/^\d+$/.test(input)) return input;
-  // x.com or twitter.com URL
-  const match = input.match(/(?:x\.com|twitter\.com)\/\w+\/status\/(\d+)/);
-  return match ? match[1] : null;
-}
+const ERROR_CLEAR_MS = 5000;
+const PROGRESS_POLL_MS = 500;
 
 let errorClearTimeout = null;
 
@@ -42,20 +40,12 @@ function setStatus(state, text) {
   statusEl.className = "status " + state;
   statusEl.textContent = text;
   if (state === "error") {
-    errorClearTimeout = setTimeout(() => setStatus("ready", "Ready"), 5000);
+    errorClearTimeout = setTimeout(() => setStatus("ready", "Ready"), ERROR_CLEAR_MS);
   }
 }
 
-function formatDuration(ms) {
-  const secs = Math.round(ms / 1000);
-  const mins = Math.floor(secs / 60);
-  const rem = secs % 60;
-  if (mins > 0) return `${mins}:${String(rem).padStart(2, "0")}`;
-  return `${secs}s`;
-}
-
 function updateQualityOptions() {
-  const videoIndex = currentVideos.length > 1 ? parseInt(videoSelect.value) : 0;
+  const videoIndex = currentVideos.length > 1 ? parseInt(videoSelect.value) || 0 : 0;
   const variants = currentVideos[videoIndex]?.variants || [];
   qualitySelect.innerHTML = "";
 
@@ -98,24 +88,32 @@ fetchBtn.addEventListener("click", async () => {
 
     if (chrome.runtime.lastError) {
       setStatus("error", "Extension error \u2014 try again");
+      downloadBtn.disabled = false;
       variantsSection.classList.add("hidden");
       return;
     }
 
     if (!response?.success) {
       setStatus("error", response?.error || "Failed to fetch video data");
+      downloadBtn.disabled = false;
       variantsSection.classList.add("hidden");
       return;
     }
 
     currentVideos = response.videos;
     currentTweetId = response.tweetId;
-    currentUsername = response.username;
+
+    if (response.apiSource === "graphql") {
+      apiWarning.textContent = AUTH_API_WARNING;
+      apiWarning.classList.remove("hidden");
+    } else {
+      apiWarning.classList.add("hidden");
+    }
 
     // Show video selector if multiple videos
     if (currentVideos.length > 1) {
       videoSelectRow.classList.remove("hidden");
-      videoSelect.innerHTML = "";
+      videoSelect.replaceChildren();
       currentVideos.forEach((video, i) => {
         const opt = document.createElement("option");
         opt.value = i;
@@ -140,9 +138,31 @@ urlInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") fetchBtn.click();
 });
 
+function handleDownloadResponse(response, failureLabel = "Download failed") {
+  downloadBtn.disabled = false;
+  if (chrome.runtime.lastError) {
+    setStatus("error", "Extension error \u2014 try again");
+    retryRow.classList.remove("hidden");
+    return;
+  }
+  if (response?.success) {
+    retryRow.classList.add("hidden");
+    startProgressTracking(response.downloadId);
+    if (response.warnings?.length) {
+      setStatus("warning", response.warnings[0]);
+      setTimeout(() => setStatus("downloading", "Downloading..."), 3000);
+    } else {
+      setStatus("downloading", "Downloading...");
+    }
+  } else {
+    setStatus("error", response?.error || failureLabel);
+    retryRow.classList.remove("hidden");
+  }
+}
+
 downloadBtn.addEventListener("click", () => {
   const selectedUrl = qualitySelect.value;
-  const videoIndex = currentVideos.length > 1 ? parseInt(videoSelect.value) : 0;
+  const videoIndex = currentVideos.length > 1 ? parseInt(videoSelect.value) || 0 : 0;
   const variants = currentVideos[videoIndex]?.variants || [];
   const variant = variants.find(v => v.url === selectedUrl);
   if (!variant) return;
@@ -154,34 +174,21 @@ downloadBtn.addEventListener("click", () => {
 
   chrome.runtime.sendMessage(
     { action: "download", tweetId: currentTweetId, variant, videoIndex },
-    (response) => {
-      downloadBtn.disabled = false;
-
-      if (chrome.runtime.lastError) {
-        setStatus("error", "Extension error \u2014 try again");
-        retryRow.classList.remove("hidden");
-        return;
-      }
-
-      if (response?.success) {
-        setStatus("downloading", "Downloading...");
-        retryRow.classList.add("hidden");
-        startProgressTracking(response.downloadId);
-      } else {
-        setStatus("error", response?.error || "Download failed");
-        retryRow.classList.remove("hidden");
-      }
-    }
+    (response) => handleDownloadResponse(response)
   );
 });
 
 // --- History (read directly from chrome.storage.local, no SW roundtrip) ---
 
 function loadHistory() {
-  chrome.storage.local.get("xvd_download_history", (data) => {
-    const history = data.xvd_download_history || [];
+  chrome.storage.local.get(HISTORY_KEY, (data) => {
+    if (chrome.runtime.lastError) {
+      console.warn("[XVD] loadHistory error:", chrome.runtime.lastError.message);
+      return;
+    }
+    const history = data[HISTORY_KEY] || [];
 
-    historyList.innerHTML = "";
+    historyList.replaceChildren();
     if (history.length === 0) {
       emptyHistory.classList.remove("hidden");
       return;
@@ -207,20 +214,9 @@ function loadHistory() {
   });
 }
 
-function formatTimeAgo(ts) {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 // Auto-refresh history when a download completes and updates storage
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.xvd_download_history) {
+  if (area === "local" && changes[HISTORY_KEY]) {
     loadHistory();
   }
 });
@@ -239,8 +235,8 @@ function startProgressTracking(downloadId) {
         stopProgressTracking();
         return;
       }
-      const dl = results[0];
-      if (dl.state === "complete") {
+      const download = results[0];
+      if (download.state === "complete") {
         progressBar.value = 100;
         progressText.textContent = "Done!";
         setStatus("ready", "Download complete!");
@@ -251,22 +247,22 @@ function startProgressTracking(downloadId) {
         downloadBtn.disabled = false;
         return;
       }
-      if (dl.state === "interrupted") {
+      if (download.state === "interrupted") {
         stopProgressTracking();
         setStatus("error", "Download interrupted");
         retryRow.classList.remove("hidden");
         downloadBtn.disabled = false;
         return;
       }
-      if (dl.totalBytes > 0) {
-        const pct = Math.round((dl.bytesReceived / dl.totalBytes) * 100);
+      if (download.totalBytes > 0) {
+        const pct = Math.round((download.bytesReceived / download.totalBytes) * 100);
         progressBar.value = pct;
         progressText.textContent = `${pct}%`;
-      } else if (dl.bytesReceived > 0) {
-        progressText.textContent = `${(dl.bytesReceived / 1024 / 1024).toFixed(1)} MB`;
+      } else if (download.bytesReceived > 0) {
+        progressText.textContent = `${(download.bytesReceived / 1024 / 1024).toFixed(1)} MB`;
       }
     });
-  }, 500);
+  }, PROGRESS_POLL_MS);
 }
 
 function stopProgressTracking() {
@@ -287,29 +283,16 @@ retryBtn.addEventListener("click", () => {
 
   chrome.runtime.sendMessage(
     { action: "download", ...lastDownloadParams },
-    (response) => {
-      downloadBtn.disabled = false;
-
-      if (chrome.runtime.lastError) {
-        setStatus("error", "Extension error \u2014 try again");
-        retryRow.classList.remove("hidden");
-        return;
-      }
-
-      if (response?.success) {
-        setStatus("downloading", "Downloading...");
-        retryRow.classList.add("hidden");
-        startProgressTracking(response.downloadId);
-      } else {
-        setStatus("error", response?.error || "Retry failed");
-        retryRow.classList.remove("hidden");
-      }
-    }
+    (response) => handleDownloadResponse(response, "Retry failed")
   );
 });
 
 // --- Disclaimer ---
-chrome.storage.sync.get("xvd_disclaimer_dismissed", (data) => {
+chrome.storage.sync.get(DISCLAIMER_KEY, (data) => {
+  if (chrome.runtime.lastError) {
+    console.warn("[XVD] disclaimer check error:", chrome.runtime.lastError.message);
+    return;
+  }
   if (data.xvd_disclaimer_dismissed) {
     disclaimer.classList.add("hidden");
   }
@@ -317,8 +300,41 @@ chrome.storage.sync.get("xvd_disclaimer_dismissed", (data) => {
 
 dismissDisclaimer.addEventListener("click", () => {
   disclaimer.classList.add("hidden");
-  chrome.storage.sync.set({ xvd_disclaimer_dismissed: true });
+  chrome.storage.sync.set({ xvd_disclaimer_dismissed: true }, () => {
+    if (chrome.runtime.lastError) {
+      console.warn("[XVD] disclaimer dismiss error:", chrome.runtime.lastError.message);
+    }
+  });
 });
+
+// --- Clear history ---
+
+clearHistoryBtn.addEventListener("click", () => {
+  chrome.runtime.sendMessage({ action: "clearHistory" }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.warn("[XVD] clearHistory error:", chrome.runtime.lastError.message);
+    }
+    // UI update is driven by the chrome.storage.onChanged listener
+  });
+});
+
+// --- Privacy link (shared pattern with options page) ---
+
+function openPrivacyPolicy(e) {
+  e.preventDefault();
+  chrome.tabs.create({ url: chrome.runtime.getURL("PRIVACY_POLICY.md") });
+}
 
 // Load history on popup open
 loadHistory();
+
+// Version
+document.getElementById("version").textContent = `v${chrome.runtime.getManifest().version}`;
+
+// Footer links
+document.getElementById("settingsLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.runtime.openOptionsPage();
+});
+
+document.getElementById("privacyLink").addEventListener("click", openPrivacyPolicy);
