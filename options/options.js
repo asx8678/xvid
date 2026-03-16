@@ -1,4 +1,4 @@
-import { SETTINGS_KEY, DISCLAIMER_KEY, DEFAULT_SETTINGS } from "../lib/constants.js";
+import { SETTINGS_KEY, DISCLAIMER_KEY, DEFAULT_SETTINGS, PRIVACY_POLICY_URL } from "../lib/constants.js";
 
 const defaultQualityEl = document.getElementById("defaultQuality");
 const syndicationOnlyEl = document.getElementById("syndicationOnly");
@@ -109,7 +109,7 @@ clearAllBtn.addEventListener("click", () => {
 
 privacyLink.addEventListener("click", (e) => {
   e.preventDefault();
-  chrome.tabs.create({ url: chrome.runtime.getURL("PRIVACY_POLICY.md") });
+  chrome.tabs.create({ url: chrome.runtime.getURL(PRIVACY_POLICY_URL) });
 });
 
 versionEl.textContent = `v${chrome.runtime.getManifest().version}`;

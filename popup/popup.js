@@ -1,5 +1,5 @@
 import { parseTweetId, formatDuration, formatTimeAgo } from "../lib/utils.js";
-import { HISTORY_KEY, DISCLAIMER_KEY, AUTH_API_WARNING } from "../lib/constants.js";
+import { HISTORY_KEY, DISCLAIMER_KEY, AUTH_API_WARNING, PRIVACY_POLICY_URL } from "../lib/constants.js";
 
 const urlInput = document.getElementById("urlInput");
 const fetchBtn = document.getElementById("fetchBtn");
@@ -318,13 +318,6 @@ clearHistoryBtn.addEventListener("click", () => {
   });
 });
 
-// --- Privacy link (shared pattern with options page) ---
-
-function openPrivacyPolicy(e) {
-  e.preventDefault();
-  chrome.tabs.create({ url: chrome.runtime.getURL("PRIVACY_POLICY.md") });
-}
-
 // Load history on popup open
 loadHistory();
 
@@ -337,4 +330,7 @@ document.getElementById("settingsLink").addEventListener("click", (e) => {
   chrome.runtime.openOptionsPage();
 });
 
-document.getElementById("privacyLink").addEventListener("click", openPrivacyPolicy);
+document.getElementById("privacyLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: chrome.runtime.getURL(PRIVACY_POLICY_URL) });
+});

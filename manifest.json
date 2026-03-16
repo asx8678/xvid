@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
-  "minimum_chrome_version": "109",
+  "minimum_chrome_version": "111",
   "permissions": [
     "downloads",
     "storage"
@@ -27,6 +27,7 @@
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "js": ["content/content.js"],
+      "world": "ISOLATED",
       "css": ["content/content.css"],
       "run_at": "document_idle"
     }

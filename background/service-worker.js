@@ -1,6 +1,7 @@
 import { fetchTweetVideoData } from "../lib/api.js";
 import { isAllowedVideoUrl } from "../lib/video-extractor.js";
 import { sanitizeFilenameComponent, pickVariantByQuality } from "../lib/utils.js";
+import { createMutex } from "../lib/mutex.js";
 import {
   SETTINGS_KEY, HISTORY_KEY, PENDING_KEY, DEFAULT_SETTINGS, AUTH_API_WARNING,
 } from "../lib/constants.js";
@@ -18,18 +19,9 @@ async function getSettings() {
   }
 }
 
+// Map preserves insertion order per spec; LRU eviction relies on keys().next()
+// returning the oldest entry, and cache hits delete+re-set to move to the end.
 const variantCache = new Map();
-
-// --- Promise-based mutex helper ---
-
-function createMutex() {
-  let chain = Promise.resolve();
-  return function withLock(fn) {
-    const result = chain.then(fn);
-    chain = result.catch(() => {});
-    return result;
-  };
-}
 
 const withPendingLock = createMutex();
 const withHistoryLock = createMutex();
@@ -202,7 +194,8 @@ async function handleDownload(tweetId, selectedVariant = null, videoIndex = 0, f
   const data = result.data;
   const resolvedTweetId = result.tweetId;
 
-  const video = data.videos[videoIndex] || data.videos[0];
+  const safeIndex = Number.isInteger(videoIndex) && videoIndex >= 0 ? videoIndex : 0;
+  const video = data.videos[safeIndex] || data.videos[0];
   if (!video?.variants?.length) {
     throw new Error("No video found in tweet");
   }
