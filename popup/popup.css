@@ -291,7 +291,18 @@ progress::-webkit-progress-value {
 
 .footer-links {
   display: flex;
+  align-items: center;
   gap: 12px;
+}
+
+.shortcut-hint {
+  font-size: 11px;
+  color: rgb(139, 148, 158);
+  background: rgba(139, 148, 158, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  cursor: default;
 }
 
 .status.warning {

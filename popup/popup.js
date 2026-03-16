@@ -223,6 +223,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // --- Progress tracking (event-driven via chrome.downloads.onChanged) ---
 
 let trackedDownloadId = null;
+let trackedTotalBytes = 0;
 
 function onDownloadChanged(delta) {
   if (delta.id !== trackedDownloadId) return;
@@ -248,12 +249,14 @@ function onDownloadChanged(delta) {
     }
   }
 
-  // Update progress on bytesReceived / totalBytes changes (use delta directly, no IPC)
-  if (delta.bytesReceived !== undefined || delta.totalBytes !== undefined) {
-    const received = delta.bytesReceived?.current ?? 0;
-    const total = delta.totalBytes?.current ?? 0;
-    if (total > 0) {
-      const pct = Math.round((received / total) * 100);
+  // Track totalBytes when first reported; use it for all subsequent bytesReceived events
+  if (delta.totalBytes?.current > 0) {
+    trackedTotalBytes = delta.totalBytes.current;
+  }
+  if (delta.bytesReceived !== undefined) {
+    const received = delta.bytesReceived.current ?? 0;
+    if (trackedTotalBytes > 0) {
+      const pct = Math.round((received / trackedTotalBytes) * 100);
       progressBar.value = pct;
       progressText.textContent = `${pct}%`;
     } else if (received > 0) {
@@ -262,9 +265,10 @@ function onDownloadChanged(delta) {
   }
 }
 
-function startProgressTracking(downloadId) {
+function startProgressTracking(downloadId, initialTotalBytes = 0) {
   stopProgressTracking();
   trackedDownloadId = downloadId;
+  trackedTotalBytes = initialTotalBytes;
   progressRow.classList.remove("hidden");
   progressBar.value = 0;
   progressText.textContent = "0%";
@@ -331,7 +335,12 @@ function resumeProgressTracking() {
     if (chrome.runtime.lastError || !results || results.length === 0) return;
     const dl = results[0];
     if (dl.byExtensionId === chrome.runtime.id) {
-      startProgressTracking(dl.id);
+      startProgressTracking(dl.id, dl.totalBytes > 0 ? dl.totalBytes : 0);
+      if (dl.totalBytes > 0 && dl.bytesReceived > 0) {
+        const pct = Math.round((dl.bytesReceived / dl.totalBytes) * 100);
+        progressBar.value = pct;
+        progressText.textContent = `${pct}%`;
+      }
       downloadBtn.disabled = true;
       setStatus("downloading", "Downloading...");
     }
