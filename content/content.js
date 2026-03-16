@@ -247,10 +247,7 @@ function processArticle(article) {
   const { primary, fallbacks } = getAllTweetIds(article);
   if (!primary) return;
 
-  // Find the last [role="group"] in the article (the action bar with reply/retweet/like).
-  // :last-of-type matches by tag name, not attribute, so we select all and take the last.
-  const groups = article.querySelectorAll('[role="group"]');
-  const actionBar = groups.length > 0 ? groups[groups.length - 1] : null;
+  const actionBar = article.querySelector('[role="group"]:last-of-type');
   if (!actionBar) return;
 
   const downloadBtn = createDownloadButton(primary, fallbacks);
