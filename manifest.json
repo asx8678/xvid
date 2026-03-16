@@ -12,8 +12,7 @@
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
-    "https://cdn.syndication.twimg.com/*",
-    "https://video.twimg.com/*"
+    "https://cdn.syndication.twimg.com/*"
   ],
   "background": {
     "service_worker": "background.js"
