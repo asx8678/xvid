@@ -1,4 +1,5 @@
-import { BUTTON_RESET_MS } from "../lib/constants.js";
+// Content scripts can't use ES module imports — keep in sync with lib/constants.js
+const BUTTON_RESET_MS = 4000;
 
 const DOWNLOAD_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-5 5a1 1 0 0 1-1.414 0l-5-5a1 1 0 1 1 1.414-1.414L11 13.586V3a1 1 0 0 1 1-1zM5 20a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5z"/></svg>`;
 
@@ -13,7 +14,7 @@ function showTooltip(anchor, text) {
 
   const tooltip = document.createElement("div");
   tooltip.className = "xvd-tooltip";
-  tooltip.setAttribute("role", "alert");
+  tooltip.setAttribute("role", "status");
   tooltip.textContent = text;
   tooltip.style.position = "fixed";
   tooltip.style.left = `${rect.left + rect.width / 2}px`;
@@ -47,21 +48,29 @@ function hideTooltip() {
 //   Lights Out: rgb(0, 0, 0)
 
 let lastIconColor = null;
+let themeRafScheduled = false;
 
 function detectAndApplyTheme() {
-  const bg = getComputedStyle(document.body).backgroundColor;
-  let iconColor;
-  if (bg.includes("255, 255, 255")) {
-    iconColor = "rgb(83, 100, 113)";   // Light theme icon color
-  } else if (bg.includes("21, 32, 43")) {
-    iconColor = "rgb(139, 148, 158)";  // Dim theme icon color
-  } else {
-    iconColor = "rgb(113, 118, 123)";  // Lights Out / default icon color
-  }
-  if (iconColor !== lastIconColor) {
-    lastIconColor = iconColor;
-    document.documentElement.style.setProperty("--xvd-icon-color", iconColor);
-  }
+  // Debounce via rAF — Twitter mutates body attributes frequently and
+  // getComputedStyle forces a style recalculation each time.
+  if (themeRafScheduled) return;
+  themeRafScheduled = true;
+  requestAnimationFrame(() => {
+    themeRafScheduled = false;
+    const bg = getComputedStyle(document.body).backgroundColor;
+    let iconColor;
+    if (bg.includes("255, 255, 255")) {
+      iconColor = "rgb(83, 100, 113)";   // Light theme icon color
+    } else if (bg.includes("21, 32, 43")) {
+      iconColor = "rgb(139, 148, 158)";  // Dim theme icon color
+    } else {
+      iconColor = "rgb(113, 118, 123)";  // Lights Out / default icon color
+    }
+    if (iconColor !== lastIconColor) {
+      lastIconColor = iconColor;
+      document.documentElement.style.setProperty("--xvd-icon-color", iconColor);
+    }
+  });
 }
 
 // --- Tweet helpers ---
@@ -76,9 +85,14 @@ function getAllTweetIds(article) {
     if (match) primary = match[1];
   }
 
+  // Only collect fallback IDs from links that are NOT inside a quoted tweet
+  // (quoted tweets are nested in their own [role="link"] or blockquote-like container).
+  const quotedTweet = article.querySelector('[role="link"] article, [data-testid="card.wrapper"]');
   const links = article.querySelectorAll('a[href*="/status/"]');
   const ids = new Set();
   for (const link of links) {
+    // Skip links that belong to a quoted/embedded tweet
+    if (quotedTweet && quotedTweet.contains(link)) continue;
     const match = link.href.match(/\/status\/(\d+)/);
     if (match) {
       if (!primary) primary = match[1];
@@ -92,14 +106,29 @@ function hasVideo(article) {
   return article.querySelector("video") !== null;
 }
 
-function findAllButtonsForTweet(tweetId) {
-  const wrappers = document.querySelectorAll(`.xvd-btn-wrapper[data-xvd-tweet-id="${CSS.escape(tweetId)}"]`);
-  const buttons = [];
-  for (const w of wrappers) {
-    const btn = w.querySelector(".xvd-download-btn");
-    if (btn) buttons.push(btn);
+// O(1) lookup for buttons by tweet ID instead of full-document querySelectorAll
+const buttonsByTweetId = new Map();
+
+function trackButton(tweetId, btn) {
+  let set = buttonsByTweetId.get(tweetId);
+  if (!set) {
+    set = new Set();
+    buttonsByTweetId.set(tweetId, set);
   }
-  return buttons;
+  set.add(btn);
+}
+
+function untrackButton(tweetId, btn) {
+  const set = buttonsByTweetId.get(tweetId);
+  if (set) {
+    set.delete(btn);
+    if (set.size === 0) buttonsByTweetId.delete(tweetId);
+  }
+}
+
+function findAllButtonsForTweet(tweetId) {
+  const set = buttonsByTweetId.get(tweetId);
+  return set ? [...set] : [];
 }
 
 function findMostVisibleVideoArticle() {
@@ -186,8 +215,27 @@ function createDownloadButton(tweetId, fallbackTweetIds) {
     });
   });
 
+  trackButton(tweetId, btn);
+
   wrapper.appendChild(btn);
   return wrapper;
+}
+
+// Clean up button tracking when wrappers are removed from the DOM
+function processRemovedNodes(mutations) {
+  for (const mutation of mutations) {
+    for (const node of mutation.removedNodes) {
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+      const wrappers = node.classList.contains("xvd-btn-wrapper")
+        ? [node]
+        : node.querySelectorAll(".xvd-btn-wrapper");
+      for (const w of wrappers) {
+        const id = w.dataset.xvdTweetId;
+        const btn = w.querySelector(".xvd-download-btn");
+        if (id && btn) untrackButton(id, btn);
+      }
+    }
+  }
 }
 
 // --- Article processing ---
@@ -199,7 +247,10 @@ function processArticle(article) {
   const { primary, fallbacks } = getAllTweetIds(article);
   if (!primary) return;
 
-  const actionBar = article.querySelector('[role="group"]:last-of-type');
+  // Find the last [role="group"] in the article (the action bar with reply/retweet/like).
+  // :last-of-type matches by tag name, not attribute, so we select all and take the last.
+  const groups = article.querySelectorAll('[role="group"]');
+  const actionBar = groups.length > 0 ? groups[groups.length - 1] : null;
   if (!actionBar) return;
 
   const downloadBtn = createDownloadButton(primary, fallbacks);
@@ -265,9 +316,24 @@ function processPendingNodes() {
   const nodes = pendingNodes;
   pendingNodes = new Set();
 
+  // Deduplicate: skip nodes whose ancestor is already in the set,
+  // so we don't querySelectorAll overlapping subtrees.
+  const roots = [];
   for (const node of nodes) {
     if (!document.contains(node)) continue;
+    let dominated = false;
+    for (const root of roots) {
+      if (root.contains(node)) { dominated = true; break; }
+    }
+    if (dominated) continue;
+    // Remove any previously-added roots that this node contains
+    for (let i = roots.length - 1; i >= 0; i--) {
+      if (node.contains(roots[i])) roots.splice(i, 1);
+    }
+    roots.push(node);
+  }
 
+  for (const node of roots) {
     if (node.tagName === "ARTICLE") {
       processArticle(node);
     } else {
@@ -284,6 +350,7 @@ function processPendingNodes() {
 }
 
 const observer = new MutationObserver((mutations) => {
+  processRemovedNodes(mutations);
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
       if (node.nodeType === Node.ELEMENT_NODE) {

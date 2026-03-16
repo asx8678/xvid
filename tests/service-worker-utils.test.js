@@ -73,8 +73,8 @@ describe('pickVariantByQuality', () => {
     expect(pickVariantByQuality(variants, '480')).toBe(variants[2]);
   });
 
-  it('returns lowest when target is below all', () => {
-    expect(pickVariantByQuality(variants, '240')).toBe(variants[2]);
+  it('returns highest when target is below all available resolutions', () => {
+    expect(pickVariantByQuality(variants, '240')).toBe(variants[0]);
   });
 
   it('returns undefined for empty variants array', () => {

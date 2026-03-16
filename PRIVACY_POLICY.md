@@ -39,7 +39,8 @@ The extension makes requests only to the following domains, all owned by X Corp:
 
 - **downloads**: Required to save video files to your Downloads folder.
 - **storage**: Required to store your settings and download history locally.
-- **cookies**: Required to read your X.com session cookie for authenticated API requests. The cookie is only used to communicate with X.com.
+- **tabs**: Required to detect which tabs are on X.com so the extension can update download button states.
+- **cookies** *(optional)*: Requested only when you enable authenticated downloads. Allows reading your X.com session cookie for authenticated API requests. The cookie is only used to communicate with X.com.
 - **Host permissions** (x.com, twitter.com, twimg.com subdomains): Required to interact with X.com pages and download videos from their CDN.
 
 ## Third-party services

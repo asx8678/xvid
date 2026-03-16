@@ -4,10 +4,11 @@
   "version": "1.0.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
-  "minimum_chrome_version": "111",
+  "minimum_chrome_version": "109",
   "permissions": [
     "downloads",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "optional_permissions": [
     "cookies"
@@ -27,7 +28,6 @@
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "js": ["content/content.js"],
-      "world": "ISOLATED",
       "css": ["content/content.css"],
       "run_at": "document_idle"
     }
@@ -53,5 +53,11 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["options/privacy.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

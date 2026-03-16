@@ -25,10 +25,7 @@ let currentVideos = [];
 let currentTweetId = "";
 let fetchGeneration = 0;
 let lastDownloadParams = null;
-let progressInterval = null;
-
 const ERROR_CLEAR_MS = 5000;
-const PROGRESS_POLL_MS = 500;
 
 let errorClearTimeout = null;
 
@@ -62,7 +59,9 @@ function updateQualityOptions() {
   for (const v of variants) {
     const opt = document.createElement("option");
     opt.value = v.url;
-    opt.textContent = `${v.resolution} (${Math.round(v.bitrate / 1000)}kbps)`;
+    const res = v.resolution && v.resolution !== "unknown" ? v.resolution : "Unknown";
+    const bitrateLabel = v.bitrate > 0 ? ` (${Math.round(v.bitrate / 1000)}kbps)` : "";
+    opt.textContent = `${res}${bitrateLabel}`;
     qualitySelect.appendChild(opt);
   }
 }
@@ -221,54 +220,61 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// --- Progress tracking ---
+// --- Progress tracking (event-driven via chrome.downloads.onChanged) ---
+
+let trackedDownloadId = null;
+
+function onDownloadChanged(delta) {
+  if (delta.id !== trackedDownloadId) return;
+
+  if (delta.state) {
+    if (delta.state.current === "complete") {
+      progressBar.value = 100;
+      progressText.textContent = "Done!";
+      setStatus("ready", "Download complete!");
+      downloadBtn.disabled = false;
+      setTimeout(() => {
+        stopProgressTracking();
+        setStatus("ready", "Ready");
+      }, 2000);
+      return;
+    }
+    if (delta.state.current === "interrupted") {
+      stopProgressTracking();
+      setStatus("error", "Download interrupted");
+      retryRow.classList.remove("hidden");
+      downloadBtn.disabled = false;
+      return;
+    }
+  }
+
+  // Update progress on bytesReceived / totalBytes changes (use delta directly, no IPC)
+  if (delta.bytesReceived !== undefined || delta.totalBytes !== undefined) {
+    const received = delta.bytesReceived?.current ?? 0;
+    const total = delta.totalBytes?.current ?? 0;
+    if (total > 0) {
+      const pct = Math.round((received / total) * 100);
+      progressBar.value = pct;
+      progressText.textContent = `${pct}%`;
+    } else if (received > 0) {
+      progressText.textContent = `${(received / 1024 / 1024).toFixed(1)} MB`;
+    }
+  }
+}
 
 function startProgressTracking(downloadId) {
   stopProgressTracking();
+  trackedDownloadId = downloadId;
   progressRow.classList.remove("hidden");
   progressBar.value = 0;
   progressText.textContent = "0%";
-
-  progressInterval = setInterval(() => {
-    chrome.downloads.search({ id: downloadId }, (results) => {
-      if (chrome.runtime.lastError || !results || results.length === 0) {
-        stopProgressTracking();
-        return;
-      }
-      const download = results[0];
-      if (download.state === "complete") {
-        progressBar.value = 100;
-        progressText.textContent = "Done!";
-        setStatus("ready", "Download complete!");
-        setTimeout(() => {
-          stopProgressTracking();
-          setStatus("ready", "Ready");
-        }, 2000);
-        downloadBtn.disabled = false;
-        return;
-      }
-      if (download.state === "interrupted") {
-        stopProgressTracking();
-        setStatus("error", "Download interrupted");
-        retryRow.classList.remove("hidden");
-        downloadBtn.disabled = false;
-        return;
-      }
-      if (download.totalBytes > 0) {
-        const pct = Math.round((download.bytesReceived / download.totalBytes) * 100);
-        progressBar.value = pct;
-        progressText.textContent = `${pct}%`;
-      } else if (download.bytesReceived > 0) {
-        progressText.textContent = `${(download.bytesReceived / 1024 / 1024).toFixed(1)} MB`;
-      }
-    });
-  }, PROGRESS_POLL_MS);
+  chrome.downloads.onChanged.addListener(onDownloadChanged);
 }
 
 function stopProgressTracking() {
-  if (progressInterval) {
-    clearInterval(progressInterval);
-    progressInterval = null;
+  if (trackedDownloadId !== null) {
+    chrome.downloads.onChanged.removeListener(onDownloadChanged);
+    trackedDownloadId = null;
   }
   progressRow.classList.add("hidden");
 }
@@ -293,14 +299,14 @@ chrome.storage.sync.get(DISCLAIMER_KEY, (data) => {
     console.warn("[XVD] disclaimer check error:", chrome.runtime.lastError.message);
     return;
   }
-  if (data.xvd_disclaimer_dismissed) {
+  if (data[DISCLAIMER_KEY]) {
     disclaimer.classList.add("hidden");
   }
 });
 
 dismissDisclaimer.addEventListener("click", () => {
   disclaimer.classList.add("hidden");
-  chrome.storage.sync.set({ xvd_disclaimer_dismissed: true }, () => {
+  chrome.storage.sync.set({ [DISCLAIMER_KEY]: true }, () => {
     if (chrome.runtime.lastError) {
       console.warn("[XVD] disclaimer dismiss error:", chrome.runtime.lastError.message);
     }
@@ -310,6 +316,7 @@ dismissDisclaimer.addEventListener("click", () => {
 // --- Clear history ---
 
 clearHistoryBtn.addEventListener("click", () => {
+  if (!confirm("Clear all download history?")) return;
   chrome.runtime.sendMessage({ action: "clearHistory" }, (response) => {
     if (chrome.runtime.lastError) {
       console.warn("[XVD] clearHistory error:", chrome.runtime.lastError.message);
@@ -318,8 +325,22 @@ clearHistoryBtn.addEventListener("click", () => {
   });
 });
 
+// On popup open, resume progress tracking if a download is in progress
+function resumeProgressTracking() {
+  chrome.downloads.search({ state: "in_progress", orderBy: ["-startTime"], limit: 1 }, (results) => {
+    if (chrome.runtime.lastError || !results || results.length === 0) return;
+    const dl = results[0];
+    if (dl.byExtensionId === chrome.runtime.id) {
+      startProgressTracking(dl.id);
+      downloadBtn.disabled = true;
+      setStatus("downloading", "Downloading...");
+    }
+  });
+}
+
 // Load history on popup open
 loadHistory();
+resumeProgressTracking();
 
 // Version
 document.getElementById("version").textContent = `v${chrome.runtime.getManifest().version}`;
