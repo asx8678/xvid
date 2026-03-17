@@ -28,6 +28,7 @@ function inject(article) {
   if (!bar) return;
   const btn = document.createElement('button');
   btn.className = 'xvd';
+  btn.title = 'Download video';
   btn.dataset.id = id;
   btn.style.cssText = BTN_CSS;
   btn.appendChild(createIcon());
@@ -50,12 +51,15 @@ document.addEventListener('click', e => {
   });
 }, true);
 
-let pending = false;
-function scan() {
-  pending = false;
-  document.querySelectorAll('article').forEach(inject);
-}
-scan();
-new MutationObserver(() => {
-  if (!pending) { pending = true; requestAnimationFrame(scan); }
+document.querySelectorAll('article').forEach(inject);
+new MutationObserver(mutations => {
+  for (const { addedNodes } of mutations) {
+    for (const node of addedNodes) {
+      if (node.nodeType !== 1) continue;
+      if (node.tagName === 'ARTICLE') { inject(node); continue; }
+      node.querySelectorAll('article').forEach(inject);
+      const a = node.closest('article');
+      if (a) inject(a);
+    }
+  }
 }).observe(document.body, { childList: true, subtree: true });

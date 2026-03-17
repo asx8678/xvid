@@ -3,6 +3,7 @@
   "name": "X Video Downloader",
   "version": "1.0",
   "description": "Download videos from X.com tweets",
+  "minimum_chrome_version": "103",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
