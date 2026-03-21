@@ -21,6 +21,7 @@
   "content_scripts": [{
     "matches": ["https://x.com/*", "https://twitter.com/*"],
     "js": ["content.js"],
+    "world": "ISOLATED",
     "run_at": "document_idle"
   }]
 }

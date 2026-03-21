@@ -39,7 +39,12 @@ async function download(tweetId) {
   const user = (data.user?.screen_name || 'video').replace(/[^a-zA-Z0-9_-]/g, '_');
   const px = (mp4.url.match(/\/(\d+x\d+)\//) || [])[1] || 'best';
 
-  const dlId = await chrome.downloads.download({ url: mp4.url, filename: `@${user}_${tweetId}_${px}.mp4` });
+  let dlId;
+  try {
+    dlId = await chrome.downloads.download({ url: mp4.url, filename: `@${user}_${tweetId}_${px}.mp4` });
+  } catch (e) {
+    throw new Error(`Download failed: ${e.message}`);
+  }
   if (!dlId) throw new Error('Download not started');
   return { ok: true };
 }

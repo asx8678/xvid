@@ -1,6 +1,14 @@
+// NOTE: This script MUST run in the ISOLATED world (the default). Running in
+// MAIN would expose chrome.runtime to the host page and open XSS vectors.
+
 const CLR_DEFAULT = 'rgb(113,118,123)';
 const CLR_SUCCESS = '#00ba7c';
 const CLR_ERROR   = '#f4212e';
+
+// --- X.com DOM selectors (fragile — first place to check when things break) --
+const SEL_TWEET_LINK = 'a[href*="/status/"] time';   // timestamp link inside a tweet
+const SEL_ACTION_BAR = '[role="group"]:last-of-type';  // bottom row of like/rt/share buttons
+// -----------------------------------------------------------------------------
 
 const BTN_CSS = `display:flex;align-items:center;justify-content:center;width:34.75px;height:34.75px;border:none;background:none;cursor:pointer;border-radius:50%;color:${CLR_DEFAULT};padding:0`;
 
@@ -16,7 +24,7 @@ function createIcon() {
 }
 
 function getTweetId(article) {
-  const link = article.querySelector('a[href*="/status/"] time')?.closest('a');
+  const link = article.querySelector(SEL_TWEET_LINK)?.closest('a');
   return link?.href.match(/\/status\/(\d+)/)?.[1];
 }
 
@@ -24,7 +32,7 @@ function inject(article) {
   if (article.querySelector('.xvd') || !article.querySelector('video')) return;
   const id = getTweetId(article);
   if (!id) return;
-  const bar = article.querySelector('[role="group"]:last-of-type');
+  const bar = article.querySelector(SEL_ACTION_BAR);
   if (!bar) return;
   const btn = document.createElement('button');
   btn.className = 'xvd';
