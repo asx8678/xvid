@@ -1,84 +1,460 @@
 const VIDEO_TYPES = new Set(['video', 'animated_gif']);
-const inflight = new Map();
+const QUALITY_PREFS = new Set(['best', 'medium', 'small']);
+const DEFAULT_SETTINGS = Object.freeze({
+  defaultQuality: 'best',
+  promptSaveAs: false,
+});
+const REQUEST_TIMEOUT_MS = 12_000;
+const CACHE_TTL_MS = 90_000;
 
-chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  // BUG 1 FIX: Return false explicitly on non-matching messages so Chrome
-  // knows we won't use the async reply channel. Returning undefined is
-  // ambiguous and fragile if the extension adds more listeners later.
-  if (!msg || typeof msg !== 'object') return false;
-  if (msg.action !== 'dl') return false;
-  if (sender.id !== chrome.runtime.id) return false;
+const inflightDownloads = new Map();
+const metadataCache = new Map();
 
-  const tabUrl = sender?.tab?.url ?? '';
-  if (!/^https:\/\/(x|twitter)\.com\//.test(tabUrl)) return false;
-
-  if (typeof msg.id !== 'string' || !/^\d{1,20}$/.test(msg.id)) {
-    reply({ ok: false, err: 'Invalid tweet ID' });
-    return true;
-  }
-
-  const id = msg.id;
-  if (!inflight.has(id)) {
-    // BUG 2 FIX: Delay inflight cleanup by 5s so concurrent callers can
-    // still chain onto the same promise. Prevents duplicate downloads from
-    // rapid clicks when .finally() used to delete the entry immediately.
-    const p = download(id).finally(() => {
-      setTimeout(() => inflight.delete(id), 5000);
-    });
-    inflight.set(id, p);
-  }
-  inflight.get(id).then(r => reply(r)).catch(e => reply({ ok: false, err: e instanceof Error ? e.message : String(e) }));
-  return true;
+chrome.runtime.onInstalled.addListener(() => {
+  void bootstrapSettings();
 });
 
-async function download(tweetId) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 10_000);
-  let res;
+chrome.runtime.onStartup?.addListener(() => {
+  void hardenStorageAccess();
+});
+
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (!msg || typeof msg !== 'object') return false;
+
+  const finish = (promise) => {
+    promise
+      .then((result) => reply(result))
+      .catch((err) => reply({ ok: false, err: getErrorMessage(err) }));
+    return true;
+  };
+
+  switch (msg.action) {
+    case 'probe':
+      return finish(handleProbe(msg));
+    case 'download':
+    case 'dl':
+      return finish(handleDownload(msg));
+    case 'openPicker':
+      return finish(handleOpenPicker(msg, sender));
+    default:
+      return false;
+  }
+});
+
+async function bootstrapSettings() {
+  await hardenStorageAccess();
+
   try {
-    res = await fetch(
-      `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&token=${Date.now()}`,
-      { signal: ctrl.signal }
-    );
+    const settings = await chrome.storage.sync.get(DEFAULT_SETTINGS);
+    const next = {};
+
+    if (!QUALITY_PREFS.has(settings.defaultQuality)) {
+      next.defaultQuality = DEFAULT_SETTINGS.defaultQuality;
+    }
+    if (typeof settings.promptSaveAs !== 'boolean') {
+      next.promptSaveAs = DEFAULT_SETTINGS.promptSaveAs;
+    }
+
+    if (Object.keys(next).length) {
+      await chrome.storage.sync.set({ ...settings, ...next });
+    }
+  } catch {
+    // Ignore storage bootstrap failures; runtime defaults are still applied.
+  }
+}
+
+async function hardenStorageAccess() {
+  try {
+    await chrome.storage.sync.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  } catch {
+    // Ignore if unavailable; functionality still works.
+  }
+}
+
+async function handleProbe(msg) {
+  const tweetId = normalizeTweetId(msg?.input ?? msg?.id ?? msg?.tweetId);
+  if (!tweetId) {
+    return { ok: false, err: 'Paste a valid X/Twitter post URL or a numeric status ID.' };
+  }
+
+  const metadata = await getTweetMetadata(tweetId);
+  const settings = await getSettings();
+  const selectedMedia = pickMediaItem(metadata.mediaItems, msg?.mediaIndex);
+
+  return {
+    ok: true,
+    tweetId,
+    user: metadata.screenName || metadata.displayName || '',
+    screenName: metadata.screenName || '',
+    displayName: metadata.displayName || '',
+    text: metadata.text || '',
+    permalink: metadata.permalink,
+    defaultQuality: settings.defaultQuality,
+    promptSaveAs: settings.promptSaveAs,
+    mediaCount: metadata.mediaItems.length,
+    selectedMediaIndex: selectedMedia?.index ?? 0,
+    mediaItems: metadata.mediaItems.map((item) => ({
+      index: item.index,
+      mediaType: item.mediaType,
+      label: formatMediaItemLabel(item, metadata.mediaItems.length),
+      variants: item.variants.map((variant) => ({
+        url: variant.url,
+        bitrate: variant.bitrate,
+        resolution: variant.resolution,
+        label: variant.label,
+        filename: buildFilename(metadata, item, variant),
+      })),
+    })),
+  };
+}
+
+async function handleDownload(msg) {
+  const tweetId = normalizeTweetId(msg?.input ?? msg?.id ?? msg?.tweetId);
+  if (!tweetId) return { ok: false, err: 'Invalid tweet ID or post URL.' };
+
+  const metadata = await getTweetMetadata(tweetId);
+  const mediaItem = pickMediaItem(metadata.mediaItems, msg?.mediaIndex);
+  if (!mediaItem) return { ok: false, err: 'No downloadable media item was found for that post.' };
+
+  const settings = await getSettings();
+  const qualityPref = QUALITY_PREFS.has(msg?.qualityPref) ? msg.qualityPref : settings.defaultQuality;
+  const variant = chooseVariant(mediaItem.variants, msg?.variantUrl || null, qualityPref);
+  if (!variant) return { ok: false, err: 'No matching MP4 variant was found for that post.' };
+
+  const saveAs = typeof msg?.saveAs === 'boolean' ? msg.saveAs : settings.promptSaveAs;
+  const key = `${tweetId}|${mediaItem.index}|${variant.url}|${saveAs ? 'saveas' : 'auto'}`;
+
+  if (!inflightDownloads.has(key)) {
+    const task = startDownload(metadata, mediaItem, variant, { saveAs }).finally(() => {
+      setTimeout(() => inflightDownloads.delete(key), 5000);
+    });
+    inflightDownloads.set(key, task);
+  }
+
+  return inflightDownloads.get(key);
+}
+
+async function handleOpenPicker(msg, sender) {
+  const tweetId = normalizeTweetId(msg?.id ?? sender?.tab?.url ?? '');
+  if (!tweetId) return { ok: false, err: 'Could not determine which post to inspect.' };
+
+  const mediaItem = Number.isInteger(msg?.mediaIndex) ? msg.mediaIndex : 0;
+  const url = chrome.runtime.getURL(
+    `popup.html?tweet=${encodeURIComponent(tweetId)}&media=${encodeURIComponent(String(mediaItem))}`
+  );
+  await chrome.tabs.create({ url });
+  return { ok: true };
+}
+
+async function getSettings() {
+  try {
+    const settings = await chrome.storage.sync.get(DEFAULT_SETTINGS);
+    return {
+      defaultQuality: QUALITY_PREFS.has(settings.defaultQuality)
+        ? settings.defaultQuality
+        : DEFAULT_SETTINGS.defaultQuality,
+      promptSaveAs: typeof settings.promptSaveAs === 'boolean'
+        ? settings.promptSaveAs
+        : DEFAULT_SETTINGS.promptSaveAs,
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function normalizeTweetId(input) {
+  if (typeof input !== 'string' && typeof input !== 'number') return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+
+  if (/^\d{5,25}$/.test(raw)) return raw;
+
+  const direct = raw.match(/(?:\/status\/|\/statuses\/|\/i\/web\/status\/|\/i\/status\/)(\d{5,25})/);
+  if (direct) return direct[1];
+
+  try {
+    const url = new URL(raw);
+    if (!/(^|\.)(x|twitter)\.com$/i.test(url.hostname)) return null;
+    const pathMatch = url.pathname.match(/(?:\/status\/|\/statuses\/|\/i\/web\/status\/|\/i\/status\/)(\d{5,25})/);
+    return pathMatch ? pathMatch[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getTweetMetadata(tweetId) {
+  pruneMetadataCache();
+
+  const cached = metadataCache.get(tweetId);
+  if (cached && (Date.now() - cached.createdAt) < CACHE_TTL_MS) {
+    return cached.promise;
+  }
+
+  const promise = fetchTweetMetadata(tweetId).catch((err) => {
+    metadataCache.delete(tweetId);
+    throw err;
+  });
+
+  metadataCache.set(tweetId, { createdAt: Date.now(), promise });
+  return promise;
+}
+
+function pruneMetadataCache() {
+  const now = Date.now();
+  for (const [key, value] of metadataCache) {
+    if ((now - value.createdAt) >= CACHE_TTL_MS) metadataCache.delete(key);
+  }
+}
+
+async function fetchTweetMetadata(tweetId) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response;
+  try {
+    const endpoint = new URL('https://cdn.syndication.twimg.com/tweet-result');
+    endpoint.searchParams.set('id', tweetId);
+    endpoint.searchParams.set('token', String(Date.now()));
+
+    response = await fetch(endpoint, {
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Timed out while contacting X/Twitter. Try again.');
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
 
-  if (!res.ok) {
-    await res.body?.cancel();
-    throw new Error(`Tweet fetch failed (${res.status})`);
+  if (!response.ok) {
+    await response.body?.cancel();
+    if (response.status === 404) {
+      throw new Error('That post could not be found.');
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('This post is unavailable or restricted.');
+    }
+    if (response.status === 429) {
+      throw new Error('Rate limited by X/Twitter. Wait a moment and try again.');
+    }
+    throw new Error(`Post lookup failed (${response.status}).`);
   }
 
   let data;
   try {
-    data = await res.json();
+    data = await response.json();
   } catch {
-    throw new Error('Invalid API response');
+    throw new Error('X/Twitter returned invalid JSON for that post.');
   }
 
-  const details = Array.isArray(data.mediaDetails) ? data.mediaDetails : [];
-  const media = details.find(m => VIDEO_TYPES.has(m.type));
-  if (!media?.video_info?.variants) throw new Error('No video');
+  const mediaDetails = Array.isArray(data?.mediaDetails) ? data.mediaDetails : [];
+  const rawVideoMedia = mediaDetails.filter((entry) => VIDEO_TYPES.has(entry?.type));
 
-  const variants = Array.isArray(media.video_info.variants) ? media.video_info.variants : [];
-  const mp4 = variants
-    .filter(v => v.content_type === 'video/mp4')
-    .reduce((best, v) => ((v.bitrate || 0) > (best.bitrate || 0) ? v : best), { bitrate: -1 });
-  if (!mp4.url) throw new Error('No mp4');
+  const mediaItems = [];
+  for (const media of rawVideoMedia) {
+    const variants = extractMp4Variants(media?.video_info?.variants ?? []);
+    if (!variants.length) continue;
 
-  let parsed;
-  try { parsed = new URL(mp4.url); } catch { throw new Error('Bad URL'); }
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'video.twimg.com') throw new Error('Bad URL');
+    mediaItems.push({
+      index: mediaItems.length,
+      mediaType: media.type,
+      variants,
+    });
+  }
 
-  const user = (data.user?.screen_name || 'video').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const px = (mp4.url.match(/\/(\d+x\d+)\//) || [])[1] || 'best';
+  if (!mediaItems.length) {
+    if (!rawVideoMedia.length) {
+      throw new Error('No downloadable video was found in that post.');
+    }
+    throw new Error('The post has video media, but no direct MP4 variants were exposed.');
+  }
 
-  let dlId;
+  const screenName = sanitizeText(data?.user?.screen_name || '');
+  const displayName = sanitizeText(data?.user?.name || '');
+  const fileUser = screenName || displayName || 'video';
+  const text = sanitizeText(data?.text || data?.full_text || '');
+  const permalink = screenName
+    ? `https://x.com/${encodeURIComponent(screenName)}/status/${tweetId}`
+    : `https://x.com/i/status/${tweetId}`;
+
+  return {
+    tweetId,
+    screenName,
+    displayName,
+    fileUser,
+    text,
+    permalink,
+    mediaItems,
+  };
+}
+
+function extractMp4Variants(variants) {
+  const seen = new Set();
+  const output = [];
+
+  for (const variant of Array.isArray(variants) ? variants : []) {
+    if (variant?.content_type !== 'video/mp4' || typeof variant.url !== 'string') continue;
+
+    let parsed;
+    try {
+      parsed = new URL(variant.url);
+    } catch {
+      continue;
+    }
+
+    if (parsed.protocol !== 'https:' || !/(^|\.)twimg\.com$/i.test(parsed.hostname)) continue;
+
+    const resolution = (parsed.pathname.match(/\/(\d+x\d+)\//) || [])[1] || '';
+    const bitrate = Number.isFinite(variant.bitrate) ? variant.bitrate : 0;
+    const key = `${resolution}|${bitrate}|${parsed.pathname}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    output.push({
+      url: variant.url,
+      bitrate,
+      resolution,
+      label: formatVariantLabel({ bitrate, resolution }),
+      area: resolutionArea(resolution),
+    });
+  }
+
+  output.sort((a, b) => {
+    if (b.bitrate !== a.bitrate) return b.bitrate - a.bitrate;
+    return b.area - a.area;
+  });
+
+  return output.map(({ area, ...variant }) => variant);
+}
+
+function pickMediaItem(mediaItems, mediaIndex) {
+  if (!Array.isArray(mediaItems) || !mediaItems.length) return null;
+  const index = Number(mediaIndex);
+  return mediaItems.find((item) => item.index === index) || mediaItems[0];
+}
+
+function chooseVariant(variants, variantUrl, qualityPref) {
+  if (!Array.isArray(variants) || !variants.length) return null;
+
+  if (variantUrl) {
+    return variants.find((variant) => variant.url === variantUrl) || null;
+  }
+
+  switch (qualityPref) {
+    case 'small':
+      return variants[variants.length - 1];
+    case 'medium':
+      return variants[Math.round((variants.length - 1) / 2)];
+    case 'best':
+    default:
+      return variants[0];
+  }
+}
+
+async function startDownload(metadata, mediaItem, variant, options = {}) {
+  const filename = buildFilename(metadata, mediaItem, variant);
+  const saveAs = Boolean(options.saveAs);
+
+  let downloadId;
   try {
-    dlId = await chrome.downloads.download({ url: mp4.url, filename: `@${user}_${tweetId}_${px}.mp4` });
-  } catch (e) {
-    throw new Error(`Download failed: ${e instanceof Error ? e.message : String(e)}`);
+    downloadId = await chrome.downloads.download({
+      url: variant.url,
+      filename,
+      conflictAction: 'uniquify',
+      saveAs,
+    });
+  } catch (err) {
+    throw new Error(`Download failed: ${getErrorMessage(err)}`);
   }
-  if (!dlId) throw new Error('Download not started');
-  return { ok: true };
+
+  if (!downloadId) {
+    throw new Error('Chrome did not start the download.');
+  }
+
+  return {
+    ok: true,
+    tweetId: metadata.tweetId,
+    mediaIndex: mediaItem.index,
+    mediaType: mediaItem.mediaType,
+    filename,
+    saveAs,
+    downloadId,
+    variant: {
+      url: variant.url,
+      bitrate: variant.bitrate,
+      resolution: variant.resolution,
+      label: variant.label,
+    },
+  };
+}
+
+function buildFilename(metadata, mediaItem, variant) {
+  const user = sanitizeFilePart(metadata.fileUser || metadata.screenName || metadata.displayName || 'video');
+  const mediaPart = metadata.mediaItems.length > 1 ? `m${mediaItem.index + 1}` : '';
+  const typePart = mediaItem.mediaType === 'animated_gif' ? 'gif' : '';
+  const resolution = sanitizeFilePart(variant.resolution || 'best');
+  const bitrate = variant.bitrate > 0 ? `${Math.round(variant.bitrate / 1000)}kbps` : 'mp4';
+  const snippet = sanitizeFilePart(metadata.text || '').slice(0, 40);
+
+  const parts = [`@${user}`, metadata.tweetId, mediaPart, typePart, resolution, bitrate, snippet]
+    .filter(Boolean)
+    .join('_')
+    .replace(/_+/g, '_')
+    .slice(0, 180);
+
+  return `${parts || `x_video_${metadata.tweetId}`}.mp4`;
+}
+
+function formatVariantLabel({ bitrate, resolution }) {
+  const pieces = [];
+  if (resolution) pieces.push(resolution);
+  if (bitrate > 0) pieces.push(`${Math.round(bitrate / 1000)} kbps`);
+  if (!pieces.length) pieces.push('MP4');
+  return pieces.join(' • ');
+}
+
+function formatMediaItemLabel(item, totalCount) {
+  const kind = item.mediaType === 'animated_gif' ? 'Animated GIF' : 'Video';
+  const variants = `${item.variants.length} variant${item.variants.length === 1 ? '' : 's'}`;
+  if (totalCount <= 1) return `${kind} • ${variants}`;
+  return `Media ${item.index + 1} • ${kind} • ${variants}`;
+}
+
+function resolutionArea(resolution) {
+  const match = /^([0-9]+)x([0-9]+)$/.exec(resolution);
+  if (!match) return 0;
+  return Number(match[1]) * Number(match[2]);
+}
+
+function sanitizeText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeFilePart(value) {
+  let cleaned = String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[^a-zA-Z0-9._ -]/g, '_')
+    .replace(/[ ]+/g, ' ')
+    .replace(/_+/g, '_')
+    .replace(/[. ]+$/g, '')
+    .replace(/^[@_ -]+/, '')
+    .slice(0, 48);
+
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(cleaned)) {
+    cleaned = `file_${cleaned}`;
+  }
+
+  return cleaned;
+}
+
+function getErrorMessage(err) {
+  if (err instanceof Error && err.message) return err.message;
+  return typeof err === 'string' && err ? err : 'Unknown error';
 }

@@ -1,0 +1,282 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --panel: #f7f9f9;
+  --panel-2: #ffffff;
+  --text: #0f1419;
+  --muted: #536471;
+  --border: rgba(15, 20, 25, 0.12);
+  --accent: #1d9bf0;
+  --accent-weak: rgba(29, 155, 240, 0.12);
+  --danger: #f4212e;
+  --danger-weak: rgba(244, 33, 46, 0.12);
+  --ok: #00ba7c;
+  --ok-weak: rgba(0, 186, 124, 0.12);
+  --shadow: 0 8px 24px rgba(15, 20, 25, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15202b;
+    --panel: #1f2933;
+    --panel-2: #192734;
+    --text: #f5f8fa;
+    --muted: #8b98a5;
+    --border: rgba(255, 255, 255, 0.12);
+    --accent-weak: rgba(29, 155, 240, 0.18);
+    --danger-weak: rgba(244, 33, 46, 0.18);
+    --ok-weak: rgba(0, 186, 124, 0.18);
+    --shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  min-width: 400px;
+}
+
+.shell {
+  width: min(100vw, 460px);
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.header {
+  margin-bottom: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.subhead,
+.hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.card + .card,
+.card + .hint {
+  margin-top: 12px;
+}
+
+label {
+  display: block;
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.field-stack {
+  margin-top: 12px;
+}
+
+.field-stack.no-gap {
+  margin-top: 0;
+}
+
+.checkbox-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+input,
+select,
+button,
+code {
+  font: inherit;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+input:focus,
+select:focus,
+button:focus {
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 3px var(--accent-weak);
+  border-color: var(--accent);
+}
+
+button {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  background: var(--accent);
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.02);
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+button.secondary,
+button.ghost {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+button.secondary:hover:not(:disabled),
+button.ghost:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.status {
+  min-height: 20px;
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+.status.ok {
+  color: var(--ok);
+}
+
+.result-card {
+  background: var(--panel-2);
+}
+
+.meta-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.meta-col {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.muted-inline {
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.post-text {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(127, 127, 127, 0.1);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.details {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.muted {
+  display: block;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+code {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.1);
+  color: var(--text);
+  word-break: break-all;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.button-grid .wide {
+  grid-column: 1 / -1;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

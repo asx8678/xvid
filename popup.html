@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Video Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div>
+        <h1>X Video Downloader</h1>
+        <p class="subhead">Paste a post URL, or open an X/Twitter post before clicking the extension.</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <form id="lookup-form" novalidate>
+        <label for="tweet-input">Post URL or status ID</label>
+        <div class="row">
+          <input id="tweet-input" name="tweet-input" type="text" autocomplete="off" spellcheck="false" placeholder="https://x.com/.../status/...">
+          <button id="analyze-btn" type="submit">Analyze</button>
+        </div>
+      </form>
+
+      <div class="settings-grid">
+        <div class="field-stack no-gap">
+          <label for="pref-quality">Default quality for the inline button</label>
+          <select id="pref-quality">
+            <option value="best">Best quality</option>
+            <option value="medium">Middle quality</option>
+            <option value="small">Smallest file</option>
+          </select>
+        </div>
+
+        <label class="checkbox-row" for="prompt-saveas">
+          <input id="prompt-saveas" type="checkbox">
+          <span>Ask where to save each file</span>
+        </label>
+      </div>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="result-card" class="card result-card" hidden>
+      <div class="meta-row">
+        <div class="meta-col">
+          <strong id="result-title">Variant selection</strong>
+          <span id="post-owner" class="muted-inline"></span>
+        </div>
+        <span id="result-badge" class="badge"></span>
+      </div>
+
+      <p id="post-text" class="post-text" hidden></p>
+
+      <div id="media-select-wrap" class="field-stack" hidden>
+        <label for="media-select">Video / GIF item</label>
+        <select id="media-select"></select>
+      </div>
+
+      <div class="field-stack">
+        <label for="variant-select">Available MP4 variants</label>
+        <select id="variant-select"></select>
+      </div>
+
+      <div class="details">
+        <div>
+          <span class="muted">File name</span>
+          <code id="filename-preview"></code>
+        </div>
+        <div>
+          <span class="muted">Post</span>
+          <a id="permalink" href="#" target="_blank" rel="noreferrer noopener">Open post</a>
+        </div>
+      </div>
+
+      <div class="button-grid">
+        <button id="download-btn" type="button" class="primary">Download selected MP4</button>
+        <button id="saveas-btn" type="button" class="secondary">Save As…</button>
+        <button id="copy-url-btn" type="button" class="ghost wide">Copy direct MP4 URL</button>
+      </div>
+    </section>
+
+    <p class="hint">Tip: on X/Twitter, click the inline button to download your saved default quality. Shift-click the inline button to open this picker. Alt-click the inline button for a one-off Save As dialog.</p>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
