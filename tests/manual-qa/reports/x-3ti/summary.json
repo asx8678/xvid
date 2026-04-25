@@ -1,0 +1,43 @@
+{
+  "capturedAt": "2026-04-25T22:10:43.231Z",
+  "results": [
+    {
+      "id": "1-single-video-live-x",
+      "status": "PASS",
+      "evidence": "Download started",
+      "screenshot": "screenshots/01-single-video-live-x.png"
+    },
+    {
+      "id": "2-multi-video-fixture",
+      "status": "PASS",
+      "evidence": "Started 2 of 2 downloads.",
+      "screenshot": "screenshots/02-multi-video-download-all.png",
+      "pageScreenshot": "screenshots/02-multi-video-fixture-x-page.png"
+    },
+    {
+      "id": "3-animated-gif",
+      "status": "PASS",
+      "evidence": "Found 1 downloadable media item for @GIPHY / 1117281960387334147.; Animated GIF variants",
+      "screenshot": "screenshots/03-animated-gif-popup.png",
+      "pageScreenshot": "screenshots/03-animated-gif-live-x.png"
+    },
+    {
+      "id": "4-quoted-post-containing-video",
+      "status": "FAIL",
+      "evidence": "No downloadable video was found in that post.",
+      "screenshot": "screenshots/04-quoted-video-popup.png"
+    },
+    {
+      "id": "5-restricted-deleted-post",
+      "status": "PASS",
+      "evidence": "That post could not be found.",
+      "screenshot": "screenshots/05-restricted-deleted-error.png"
+    },
+    {
+      "id": "6-mobile-twitter-url-parsing",
+      "status": "PASS",
+      "evidence": "Found 1 downloadable media item for @NASAArtemis / 2047785574757478731.",
+      "screenshot": "screenshots/06-mobile-twitter-url-popup.png"
+    }
+  ]
+}
