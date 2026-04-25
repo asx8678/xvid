@@ -13,6 +13,7 @@ import singleVideoFixture from './fixtures/single-video.json';
 import multiVideoFixture from './fixtures/multi-video.json';
 import animatedGifFixture from './fixtures/animated-gif.json';
 import stringBitrateFixture from './fixtures/string-bitrate.json';
+import snakeCaseFixture from './fixtures/snake-case-media-details.json';
 
 let chrome;
 let T;
@@ -30,6 +31,7 @@ beforeEach(async () => {
       '2222222222': multiVideoFixture,
       '3333333333': animatedGifFixture,
       '5555555555': stringBitrateFixture,
+      '6666666666': snakeCaseFixture,
     };
 
     const fixture = fixtureMap[tweetId];
@@ -134,6 +136,21 @@ describe('probe action', () => {
     const variants = response.mediaItems[0].variants;
     expect(variants.length).toBe(5);
     expect(variants[0].bitrate).toBe(2176000);
+  });
+
+  it('handles snake_case media_details fallback identically to camelCase', async () => {
+    const response = await chrome.runtime.sendMessage({
+      action: 'probe',
+      input: '6666666666',
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.tweetId).toBe('6666666666');
+    expect(response.mediaItems.length).toBe(1);
+    // Same variant count as single-video fixture (3 MP4 variants)
+    expect(response.mediaItems[0].variants.length).toBe(3);
+    // Best variant still first
+    expect(response.mediaItems[0].variants[0].bitrate).toBe(2176000);
   });
 
   it('returns 404 error for unknown tweet ID', async () => {

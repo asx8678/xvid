@@ -1,7 +1,10 @@
 {
   "name": "xvid",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

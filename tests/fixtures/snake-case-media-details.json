@@ -1,0 +1,36 @@
+{
+  "__typename": "Tweet",
+  "lang": "en",
+  "text": "Testing snake_case media_details fallback",
+  "user": {
+    "screen_name": "snakecasetester",
+    "name": "Snake Case Tester"
+  },
+  "media_details": [
+    {
+      "display_url": "pic.twitter.com/xyz789",
+      "type": "video",
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "duration_millis": 20000,
+        "variants": [
+          {
+            "bitrate": 2176000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/6666666666/pu/vid/1280x720/snake_high.mp4?tag=14"
+          },
+          {
+            "bitrate": 832000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/6666666666/pu/vid/640x360/snake_med.mp4?tag=14"
+          },
+          {
+            "bitrate": 256000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/6666666666/pu/vid/320x180/snake_low.mp4?tag=14"
+          }
+        ]
+      }
+    }
+  ]
+}
