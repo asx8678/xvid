@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     environmentMatchGlobs: [
       ['tests/popup.test.js', 'jsdom'],
+      ['tests/content.test.js', 'jsdom'],
     ],
     setupFiles: ['./tests/setup.js'],
     include: ['tests/**/*.test.js'],

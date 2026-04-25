@@ -2,6 +2,8 @@
 
 A local Chrome/Chromium Manifest V3 extension for downloading MP4 video variants exposed by X/Twitter posts.
 
+**Latest release**: see `RELEASE_NOTES_v2.3.1.md` for the v2.3.1 permission-tightening release.
+
 ## Features
 
 - Inline download button on X/Twitter posts with videos.
@@ -27,6 +29,23 @@ A local Chrome/Chromium Manifest V3 extension for downloading MP4 video variants
 - Shift-click the inline icon to open the picker for that post.
 - Alt/Option-click the inline icon to open a Save As dialog.
 - Use the toolbar popup to paste a URL/status ID, choose a variant, download all media, or copy the direct MP4 URL.
+
+## Development
+
+### Running tests
+
+```bash
+npm install
+npm test                  # one-shot, used in CI
+npm run test:watch        # watch mode for local dev
+npm run test:coverage     # coverage report
+```
+
+The test suite covers `background.js` (≥84% statements) and `popup.js` (≥95% statements) using Vitest with a faithful `chrome.*` API mock. See `tests/setup.js` for the mock factory and `tests/fixtures/` for sample syndication-endpoint responses.
+
+### Reporting security issues
+
+See `SECURITY.md` for known dev-toolting advisories and the disclosure policy.
 
 ## Notes
 
