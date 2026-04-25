@@ -296,10 +296,28 @@ async function triggerDownloadAll(saveAs) {
   }
 
   const failed = Array.isArray(response.errors) ? response.errors.length : 0;
-  const base = openingSaveAs
-    ? `Save As opened for ${response.count} of ${response.requested} media items.`
-    : `Started ${response.count} of ${response.requested} downloads.`;
-  setStatus(failed ? `${base} ${failed} item${failed === 1 ? '' : 's'} failed.` : base, failed ? '' : 'ok');
+  const deduped = Number.isFinite(response.dedupedCount) ? response.dedupedCount : 0;
+  const fresh = Math.max(response.count - deduped, 0);
+
+  const parts = [];
+  if (openingSaveAs) {
+    parts.push(`Save As opened for ${response.count} of ${response.requested} media items.`);
+  } else {
+    parts.push(`Started ${fresh} of ${response.requested} downloads.`);
+  }
+  if (deduped > 0) {
+    parts.push(`${deduped} ${deduped === 1 ? 'was' : 'were'} already in progress.`);
+  }
+  if (failed > 0) {
+    const firstErr = response.errors.find((entry) => entry && entry.err);
+    const detail = firstErr
+      ? `Media ${(firstErr.mediaIndex ?? 0) + 1}: ${firstErr.err}`
+      : 'Some items failed.';
+    parts.push(`${failed} item${failed === 1 ? '' : 's'} failed — ${detail}`);
+  }
+
+  const className = failed > 0 ? 'warn' : 'ok';
+  setStatus(parts.join(' '), className);
 }
 
 function getCurrentMedia(preferredIndex = state.mediaIndex) {
@@ -385,6 +403,7 @@ function setStatus(message, kind) {
   statusEl.className = 'status';
   if (kind === 'error') statusEl.classList.add('error');
   if (kind === 'ok') statusEl.classList.add('ok');
+  if (kind === 'warn') statusEl.classList.add('warn');
 }
 
 function pickPreferredVariantUrl(variants, quality) {

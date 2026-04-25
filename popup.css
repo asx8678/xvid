@@ -198,6 +198,10 @@ button.ghost:hover:not(:disabled) {
   color: var(--ok);
 }
 
+.status.warn {
+  color: #b45309;
+}
+
 .result-card {
   background: var(--panel-2);
 }
