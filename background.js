@@ -371,7 +371,11 @@ function extractMp4Variants(variants) {
     if (parsed.protocol !== 'https:' || !/(^|\.)twimg\.com$/i.test(parsed.hostname)) continue;
 
     const resolution = (parsed.pathname.match(/\/(\d+x\d+)\//) || [])[1] || '';
-    const rawBitrate = Number(variant.bitrate);
+    const rawBitrate = typeof variant.bitrate === 'number'
+      ? variant.bitrate
+      : (typeof variant.bitrate === 'string' && /^[1-9]\d*$/.test(variant.bitrate.trim())
+          ? Number(variant.bitrate.trim())
+          : NaN);
     const bitrate = Number.isFinite(rawBitrate) && rawBitrate > 0 ? rawBitrate : 0;
     const key = `${resolution}|${bitrate}|${parsed.pathname}`;
     if (seen.has(key)) continue;
