@@ -1,0 +1,63 @@
+{
+  "__typename": "Tweet",
+  "lang": "en",
+  "favorite_count": 10,
+  "possibly_sensitive": false,
+  "created_at": "2026-04-25T12:00:00.000Z",
+  "display_text_range": [0, 42],
+  "text": "Check out this quoted post with video",
+  "user": {
+    "screen_name": "quoter",
+    "name": "Quote Tweeter",
+    "profile_image_url_https": "https://pbs.twimg.com/profile_images/000000000000000000/quoter.jpg"
+  },
+  "parent": {
+    "__typename": "Tweet",
+    "id_str": "9998887776665554443",
+    "lang": "en",
+    "favorite_count": 500,
+    "possibly_sensitive": false,
+    "created_at": "2026-04-25T10:00:00.000Z",
+    "text": "Here is my original video post",
+    "user": {
+      "id_str": "111222333",
+      "screen_name": "originalposter",
+      "name": "Original Poster",
+      "is_blue_verified": true,
+      "profile_image_url_https": "https://pbs.twimg.com/profile_images/000000000000000000/op.jpg"
+    },
+    "mediaDetails": [
+      {
+        "display_url": "pic.twitter.com/xyz789",
+        "expanded_url": "https://x.com/originalposter/status/9998887776665554443/video/1",
+        "media_url_https": "https://pbs.twimg.com/media/parent_thumb.jpg",
+        "type": "video",
+        "video_info": {
+          "aspect_ratio": [16, 9],
+          "duration_millis": 45000,
+          "variants": [
+            {
+              "bitrate": 2176000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/ext_tw_video/9998887776665554443/pu/vid/1280x720/parent_high.mp4?tag=14"
+            },
+            {
+              "bitrate": 832000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/ext_tw_video/9998887776665554443/pu/vid/640x360/parent_med.mp4?tag=14"
+            },
+            {
+              "bitrate": 256000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/ext_tw_video/9998887776665554443/pu/vid/320x180/parent_low.mp4?tag=14"
+            },
+            {
+              "content_type": "application/x-mpegURL",
+              "url": "https://video.twimg.com/ext_tw_video/9998887776665554443/pu/pl/hls.m3u8"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

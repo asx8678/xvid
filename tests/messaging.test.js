@@ -14,6 +14,7 @@ import multiVideoFixture from './fixtures/multi-video.json';
 import animatedGifFixture from './fixtures/animated-gif.json';
 import stringBitrateFixture from './fixtures/string-bitrate.json';
 import snakeCaseFixture from './fixtures/snake-case-media-details.json';
+import quotedOnlyVideoFixture from './fixtures/quoted-only-video.json';
 
 let chrome;
 let T;
@@ -32,6 +33,7 @@ beforeEach(async () => {
       '3333333333': animatedGifFixture,
       '5555555555': stringBitrateFixture,
       '6666666666': snakeCaseFixture,
+      '7777777777': quotedOnlyVideoFixture,
     };
 
     const fixture = fixtureMap[tweetId];
@@ -174,6 +176,7 @@ describe('download action', () => {
     });
 
     expect(response.ok).toBe(true);
+    expect(response.tweetId).toBe('1111111111');
     const downloads = chrome.__test.__getDownloads();
     expect(downloads).toHaveLength(1);
     expect(downloads[0].url).toContain('twimg.com');
@@ -311,6 +314,7 @@ describe('downloadAll action', () => {
     });
 
     expect(response.ok).toBe(true);
+    expect(response.tweetId).toBe('1111111111');
     expect(response.count).toBe(1);
   });
 
@@ -386,5 +390,83 @@ describe('dl alias', () => {
     expect(response.ok).toBe(true);
     const downloads = chrome.__test.__getDownloads();
     expect(downloads).toHaveLength(1);
+  });
+});
+
+// ─── quoted/parent video fallback integration ────────────────────────────
+
+describe('quoted/parent video fallback integration', () => {
+  it('probe finds video in parent.mediaDetails for quoted-only fixture', async () => {
+    const response = await chrome.runtime.sendMessage({
+      action: 'probe',
+      input: '7777777777',
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.tweetId).toBe('9998887776665554443');
+    expect(response.mediaItems.length).toBeGreaterThan(0);
+    expect(response.mediaItems[0].variants.length).toBeGreaterThan(0);
+    expect(response.mediaItems[0].durationMillis).toBe(45000);
+    // User info comes from the media-bearing parent tweet
+    expect(response.screenName).toBe('originalposter');
+    expect(response.displayName).toBe('Original Poster');
+    // Filename should contain the parent tweet ID
+    const filename = response.mediaItems[0].variants[0].filename;
+    expect(filename).toContain('9998887776665554443');
+    expect(filename).toContain('originalposter');
+  });
+
+  it('download works for quoted-only video fixture', async () => {
+    const response = await chrome.runtime.sendMessage({
+      action: 'download',
+      input: '7777777777',
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.tweetId).toBe('9998887776665554443');
+    const downloads = chrome.__test.__getDownloads();
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].url).toContain('twimg.com');
+    expect(downloads[0].filename).toContain('9998887776665554443');
+    expect(downloads[0].filename.endsWith('.mp4')).toBe(true);
+  });
+
+  it('downloadAll works for quoted-only video fixture', async () => {
+    const response = await chrome.runtime.sendMessage({
+      action: 'downloadAll',
+      input: '7777777777',
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.tweetId).toBe('9998887776665554443');
+    expect(response.count).toBe(1);
+    const downloads = chrome.__test.__getDownloads();
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].filename).toContain('9998887776665554443');
+  });
+
+  it('probe returns error for text-only quote with no video anywhere', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Just a text quote',
+        user: { screen_name: 'texter', name: 'Texter' },
+        parent: {
+          id_str: '1234567890',
+          user: { screen_name: 'parent_user', name: 'Parent' },
+          mediaDetails: [{ type: 'photo', media_url_https: 'https://pbs.twimg.com/media/x.jpg' }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    }));
+
+    const response = await chrome.runtime.sendMessage({
+      action: 'probe',
+      input: '8888888888',
+    });
+
+    expect(response.ok).toBe(false);
+    expect(response.err).toContain('No downloadable video');
   });
 });

@@ -85,7 +85,7 @@ async function handleProbe(msg) {
 
   return {
     ok: true,
-    tweetId,
+    tweetId: metadata.tweetId,
     user: metadata.screenName || metadata.displayName || '',
     screenName: metadata.screenName || '',
     displayName: metadata.displayName || '',
@@ -172,7 +172,7 @@ async function handleDownloadAll(msg) {
   const dedupedCount = downloads.filter((entry) => entry && entry.deduped).length;
   return {
     ok: true,
-    tweetId,
+    tweetId: metadata.tweetId,
     requested: metadata.mediaItems.length,
     count: downloads.length,
     dedupedCount,
@@ -316,10 +316,31 @@ async function fetchTweetMetadata(tweetId) {
     throw new Error('X/Twitter returned invalid JSON for that post.');
   }
 
-  const mediaDetails = Array.isArray(data?.mediaDetails)
+  const topLevelDetails = Array.isArray(data?.mediaDetails)
     ? data.mediaDetails
     : (Array.isArray(data?.media_details) ? data.media_details : []);
-  const rawVideoMedia = mediaDetails.filter((entry) => VIDEO_TYPES.has(entry?.type));
+  let rawVideoMedia = topLevelDetails.filter((entry) => VIDEO_TYPES.has(entry?.type));
+
+  // Fallback: if top-level has no downloadable video, check parent or
+  // quoted_status for media-bearing quoted/referenced tweets. The real
+  // syndication API uses `parent`; `quoted_status` is supported for compat.
+  let mediaSource = data;
+  if (!rawVideoMedia.length) {
+    const fallbackCandidates = [data?.parent, data?.quoted_status].filter(
+      (candidate) => candidate && typeof candidate === 'object'
+    );
+    for (const fallback of fallbackCandidates) {
+      const fallbackDetails = Array.isArray(fallback.mediaDetails)
+        ? fallback.mediaDetails
+        : (Array.isArray(fallback.media_details) ? fallback.media_details : []);
+      const fallbackVideo = fallbackDetails.filter((entry) => VIDEO_TYPES.has(entry?.type));
+      if (fallbackVideo.length) {
+        rawVideoMedia = fallbackVideo;
+        mediaSource = fallback;
+        break;
+      }
+    }
+  }
 
   const mediaItems = [];
   for (const media of rawVideoMedia) {
@@ -350,16 +371,22 @@ async function fetchTweetMetadata(tweetId) {
     throw new Error('The post has video media, but no direct MP4 variants were exposed.');
   }
 
-  const screenName = sanitizeText(data?.user?.screen_name || '');
-  const displayName = sanitizeText(data?.user?.name || '');
+  // When media comes from a parent/quoted fallback, target metadata at the
+  // media-bearing tweet so downloads and filenames reference the correct ID.
+  // Keep the outer tweet text for popup context when available.
+  const mediaSourceId = String(mediaSource?.id_str || mediaSource?.id || tweetId);
+  const screenName = sanitizeText(mediaSource?.user?.screen_name || '');
+  const displayName = sanitizeText(mediaSource?.user?.name || '');
   const fileUser = screenName || displayName || 'video';
-  const text = sanitizeText(data?.text || data?.full_text || '');
+  const outerText = sanitizeText(data?.text || data?.full_text || '');
+  const mediaSourceText = sanitizeText(mediaSource?.text || mediaSource?.full_text || '');
+  const text = mediaSource !== data ? (outerText || mediaSourceText) : outerText;
   const permalink = screenName
-    ? `https://x.com/${encodeURIComponent(screenName)}/status/${tweetId}`
-    : `https://x.com/i/status/${tweetId}`;
+    ? `https://x.com/${encodeURIComponent(screenName)}/status/${mediaSourceId}`
+    : `https://x.com/i/status/${mediaSourceId}`;
 
   return {
-    tweetId,
+    tweetId: mediaSourceId,
     screenName,
     displayName,
     fileUser,

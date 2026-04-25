@@ -1122,3 +1122,356 @@ describe('Metadata extraction: thumbnailUrl and durationMillis', () => {
     expect(result.mediaItems[0].durationLabel).toBe('0:20');
   });
 });
+
+// ─── Quoted/parent video fallback ────────────────────────────────────────
+
+describe('Quoted/parent video fallback', () => {
+  it('falls back to parent.mediaDetails when top-level has no video', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Check out this quoted post with video',
+        user: { screen_name: 'quoter', name: 'Quote Tweeter' },
+        parent: {
+          id_str: '9998887776665554443',
+          text: 'Here is my original video post',
+          user: { screen_name: 'originalposter', name: 'Original Poster' },
+          mediaDetails: [{
+            type: 'video',
+            media_url_https: 'https://pbs.twimg.com/media/parent_thumb.jpg',
+            video_info: {
+              duration_millis: 45000,
+              variants: [
+                {
+                  bitrate: 2176000,
+                  content_type: 'video/mp4',
+                  url: 'https://video.twimg.com/ext_tw_video/9998887776665554443/pu/vid/1280x720/parent_high.mp4?tag=14',
+                },
+                {
+                  bitrate: 832000,
+                  content_type: 'video/mp4',
+                  url: 'https://video.twimg.com/ext_tw_video/9998887776665554443/pu/vid/640x360/parent_med.mp4?tag=14',
+                },
+              ],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580001' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems).toHaveLength(1);
+    expect(result.mediaItems[0].variants).toHaveLength(2);
+    expect(result.mediaItems[0].variants[0].bitrate).toBe(2176000);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('https://pbs.twimg.com/media/parent_thumb.jpg');
+    expect(result.mediaItems[0].durationMillis).toBe(45000);
+    expect(result.mediaItems[0].durationLabel).toBe('0:45');
+  });
+
+  it('uses parent tweet id_str for tweetId/permalink in fallback', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Check out this quoted post',
+        user: { screen_name: 'quoter', name: 'Quote Tweeter' },
+        parent: {
+          id_str: '9998887776665554443',
+          text: 'Original video',
+          user: { screen_name: 'originalposter', name: 'Original Poster' },
+          mediaDetails: [{
+            type: 'video',
+            video_info: {
+              duration_millis: 10000,
+              variants: [{
+                bitrate: 832000,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/9998887776665554443/pu/vid/640x360/v.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580002' });
+    expect(result.ok).toBe(true);
+    expect(result.tweetId).toBe('9998887776665554443');
+    expect(result.permalink).toBe('https://x.com/originalposter/status/9998887776665554443');
+    const variantFilename = result.mediaItems[0].variants[0].filename;
+    expect(variantFilename).toContain('9998887776665554443');
+    expect(variantFilename).toContain('originalposter');
+  });
+
+  it('keeps outer tweet text when falling back to parent', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Great video from someone else',
+        user: { screen_name: 'quoter', name: 'Quote Tweeter' },
+        parent: {
+          id_str: '1112223334445556667',
+          text: 'My original video',
+          user: { screen_name: 'videoposter', name: 'Video Poster' },
+          mediaDetails: [{
+            type: 'video',
+            video_info: {
+              duration_millis: 5000,
+              variants: [{
+                bitrate: 832000,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/1112223334445556667/pu/vid/640x360/v.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580003' });
+    expect(result.ok).toBe(true);
+    // Outer text is preserved for popup context
+    expect(result.text).toBe('Great video from someone else');
+    // But user info targets the media-bearing parent
+    expect(result.screenName).toBe('videoposter');
+    expect(result.displayName).toBe('Video Poster');
+  });
+
+  it('falls back to quoted_status when parent is absent', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Reposting this gem',
+        user: { screen_name: 'reposter', name: 'Reposter' },
+        quoted_status: {
+          id_str: '4445556667778889990',
+          text: 'My cool video',
+          user: { screen_name: 'coolperson', name: 'Cool Person' },
+          mediaDetails: [{
+            type: 'video',
+            video_info: {
+              duration_millis: 20000,
+              variants: [{
+                bitrate: 2176000,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/4445556667778889990/pu/vid/1280x720/qv.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580004' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems).toHaveLength(1);
+    expect(result.mediaItems[0].durationMillis).toBe(20000);
+    expect(result.screenName).toBe('coolperson');
+    const variantFilename = result.mediaItems[0].variants[0].filename;
+    expect(variantFilename).toContain('4445556667778889990');
+  });
+
+  it('falls back to quoted_status when parent exists without video', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Parent has no video, quoted status does',
+        user: { screen_name: 'outer', name: 'Outer' },
+        parent: {
+          id_str: '3333333333333333333',
+          user: { screen_name: 'parent_text', name: 'Parent Text' },
+          mediaDetails: [{ type: 'photo', media_url_https: 'https://pbs.twimg.com/media/photo.jpg' }],
+        },
+        quoted_status: {
+          id_str: '4444444444444444444',
+          text: 'Quoted video',
+          user: { screen_name: 'quoted_video', name: 'Quoted Video' },
+          mediaDetails: [{
+            type: 'video',
+            video_info: {
+              duration_millis: 15000,
+              variants: [{
+                bitrate: 832000,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/4444444444444444444/pu/vid/640x360/qv.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580009' });
+    expect(result.ok).toBe(true);
+    expect(result.tweetId).toBe('4444444444444444444');
+    expect(result.screenName).toBe('quoted_video');
+    expect(result.mediaItems[0].durationMillis).toBe(15000);
+    expect(result.mediaItems[0].variants[0].filename).toContain('4444444444444444444');
+  });
+
+  it('prefers parent over quoted_status when both present', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Quote with both parent and quoted',
+        user: { screen_name: 'outer', name: 'Outer' },
+        parent: {
+          id_str: 'PPPPPP0001',
+          user: { screen_name: 'parent_user', name: 'Parent User' },
+          mediaDetails: [{
+            type: 'video',
+            video_info: {
+              duration_millis: 30000,
+              variants: [{
+                bitrate: 832000,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/PPPPPP0001/pu/vid/640x360/pv.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+        quoted_status: {
+          id_str: 'QQQQQQ0001',
+          user: { screen_name: 'quoted_user', name: 'Quoted User' },
+          mediaDetails: [{
+            type: 'video',
+            video_info: {
+              duration_millis: 15000,
+              variants: [{
+                bitrate: 256000,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/QQQQQQ0001/pu/vid/320x180/qv.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580005' });
+    expect(result.ok).toBe(true);
+    expect(result.screenName).toBe('parent_user');
+    expect(result.mediaItems[0].durationMillis).toBe(30000);
+  });
+
+  it('still throws when neither top-level nor parent/quoted has video', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Text-only quote',
+        user: { screen_name: 'textonly', name: 'Text Only' },
+        parent: {
+          id_str: '2222333344445555666',
+          user: { screen_name: 'parent_text', name: 'Parent Text' },
+          mediaDetails: [{ type: 'photo', media_url_https: 'https://pbs.twimg.com/media/img.jpg' }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580006' });
+    expect(result.ok).toBe(false);
+    expect(result.err).toContain('No downloadable video');
+  });
+
+  it('preserves existing top-level video behavior (no fallback needed)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'My own video post',
+        user: { screen_name: 'myself', name: 'My Self' },
+        mediaDetails: [{
+          type: 'video',
+          media_url_https: 'https://pbs.twimg.com/media/my_thumb.jpg',
+          video_info: {
+            duration_millis: 25000,
+            variants: [{
+              bitrate: 2176000,
+              content_type: 'video/mp4',
+              url: 'https://video.twimg.com/ext_tw_video/5555580007/pu/vid/1280x720/my.mp4?tag=14',
+            }],
+          },
+        }],
+        parent: {
+          id_str: '9999999999999999999',
+          user: { screen_name: 'parent_should_be_ignored', name: 'Ignored' },
+          mediaDetails: [{
+            type: 'video',
+            video_info: {
+              duration_millis: 99999,
+              variants: [{
+                bitrate: 1,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/9999999999999999999/pu/vid/640x360/should_not_appear.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580007' });
+    expect(result.ok).toBe(true);
+    expect(result.screenName).toBe('myself');
+    expect(result.mediaItems[0].durationMillis).toBe(25000);
+    expect(result.mediaItems[0].variants[0].url).toContain('5555580007');
+  });
+
+  it('falls back to parent with snake_case media_details', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        text: 'Quoting with snake_case parent',
+        user: { screen_name: 'quoter', name: 'Quote Tweeter' },
+        parent: {
+          id_str: '7777888899990000123',
+          user: { screen_name: 'snakewriter', name: 'Snake Writer' },
+          media_details: [{
+            type: 'video',
+            media_url_https: 'https://pbs.twimg.com/media/snake_parent.jpg',
+            video_info: {
+              duration_millis: 12000,
+              variants: [{
+                bitrate: 832000,
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/ext_tw_video/7777888899990000123/pu/vid/640x360/snake.mp4?tag=14',
+              }],
+            },
+          }],
+        },
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555580008' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems).toHaveLength(1);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('https://pbs.twimg.com/media/snake_parent.jpg');
+    expect(result.screenName).toBe('snakewriter');
+  });
+});
