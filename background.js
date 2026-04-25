@@ -34,6 +34,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     case 'download':
     case 'dl':
       return finish(handleDownload(msg));
+    case 'downloadAll':
+      return finish(handleDownloadAll(msg));
     case 'openPicker':
       return finish(handleOpenPicker(msg, sender));
     default:
@@ -117,21 +119,62 @@ async function handleDownload(msg) {
   if (!mediaItem) return { ok: false, err: 'No downloadable media item was found for that post.' };
 
   const settings = await getSettings();
-  const qualityPref = QUALITY_PREFS.has(msg?.qualityPref) ? msg.qualityPref : settings.defaultQuality;
+  const qualityPref = resolveQualityPref(msg?.qualityPref, settings.defaultQuality);
   const variant = chooseVariant(mediaItem.variants, msg?.variantUrl || null, qualityPref);
   if (!variant) return { ok: false, err: 'No matching MP4 variant was found for that post.' };
 
   const saveAs = typeof msg?.saveAs === 'boolean' ? msg.saveAs : settings.promptSaveAs;
-  const key = `${tweetId}|${mediaItem.index}|${variant.url}|${saveAs ? 'saveas' : 'auto'}`;
+  return startDownloadWithInflight(metadata, mediaItem, variant, { saveAs });
+}
 
-  if (!inflightDownloads.has(key)) {
-    const task = startDownload(metadata, mediaItem, variant, { saveAs }).finally(() => {
-      setTimeout(() => inflightDownloads.delete(key), 5000);
-    });
-    inflightDownloads.set(key, task);
+async function handleDownloadAll(msg) {
+  const tweetId = normalizeTweetId(msg?.input ?? msg?.id ?? msg?.tweetId);
+  if (!tweetId) return { ok: false, err: 'Invalid tweet ID or post URL.' };
+
+  const metadata = await getTweetMetadata(tweetId);
+  if (!metadata.mediaItems.length) {
+    return { ok: false, err: 'No downloadable media item was found for that post.' };
   }
 
-  return inflightDownloads.get(key);
+  const settings = await getSettings();
+  const qualityPref = resolveQualityPref(msg?.qualityPref, settings.defaultQuality);
+  const saveAs = typeof msg?.saveAs === 'boolean' ? msg.saveAs : settings.promptSaveAs;
+  const downloads = [];
+  const errors = [];
+
+  // Start sequentially. This keeps Chrome Save As prompts usable on multi-media posts
+  // and avoids flooding the downloads API if a post exposes many variants.
+  for (const mediaItem of metadata.mediaItems) {
+    const variant = chooseVariant(mediaItem.variants, null, qualityPref);
+    if (!variant) {
+      errors.push({ mediaIndex: mediaItem.index, err: 'No matching MP4 variant.' });
+      continue;
+    }
+
+    try {
+      downloads.push(await startDownloadWithInflight(metadata, mediaItem, variant, { saveAs }));
+    } catch (err) {
+      errors.push({ mediaIndex: mediaItem.index, err: getErrorMessage(err) });
+    }
+  }
+
+  if (!downloads.length) {
+    return {
+      ok: false,
+      err: errors.map((entry) => entry.err).filter(Boolean).join('; ') || 'Could not start any downloads.',
+      errors,
+    };
+  }
+
+  return {
+    ok: true,
+    tweetId,
+    requested: metadata.mediaItems.length,
+    count: downloads.length,
+    saveAs,
+    downloads,
+    errors,
+  };
 }
 
 async function handleOpenPicker(msg, sender) {
@@ -150,9 +193,7 @@ async function getSettings() {
   try {
     const settings = await chrome.storage.sync.get(DEFAULT_SETTINGS);
     return {
-      defaultQuality: QUALITY_PREFS.has(settings.defaultQuality)
-        ? settings.defaultQuality
-        : DEFAULT_SETTINGS.defaultQuality,
+      defaultQuality: resolveQualityPref(settings.defaultQuality, DEFAULT_SETTINGS.defaultQuality),
       promptSaveAs: typeof settings.promptSaveAs === 'boolean'
         ? settings.promptSaveAs
         : DEFAULT_SETTINGS.promptSaveAs,
@@ -162,6 +203,10 @@ async function getSettings() {
   }
 }
 
+function resolveQualityPref(value, fallback = DEFAULT_SETTINGS.defaultQuality) {
+  return QUALITY_PREFS.has(value) ? value : fallback;
+}
+
 function normalizeTweetId(input) {
   if (typeof input !== 'string' && typeof input !== 'number') return null;
   const raw = String(input).trim();
@@ -169,17 +214,33 @@ function normalizeTweetId(input) {
 
   if (/^\d{5,25}$/.test(raw)) return raw;
 
-  const direct = raw.match(/(?:\/status\/|\/statuses\/|\/i\/web\/status\/|\/i\/status\/)(\d{5,25})/);
-  if (direct) return direct[1];
-
-  try {
-    const url = new URL(raw);
-    if (!/(^|\.)(x|twitter)\.com$/i.test(url.hostname)) return null;
-    const pathMatch = url.pathname.match(/(?:\/status\/|\/statuses\/|\/i\/web\/status\/|\/i\/status\/)(\d{5,25})/);
-    return pathMatch ? pathMatch[1] : null;
-  } catch {
-    return null;
+  const candidate = buildTweetUrlCandidate(raw);
+  if (candidate) {
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== 'https:') return null;
+      if (!/(^|\.)(x|twitter)\.com$/i.test(url.hostname)) return null;
+      return matchTweetIdFromPath(url.pathname);
+    } catch {
+      return null;
+    }
   }
+
+  return raw.startsWith('/') ? matchTweetIdFromPath(raw) : null;
+}
+
+function buildTweetUrlCandidate(raw) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw;
+  if (/^(?:www\.)?(?:x|twitter)\.com\//i.test(raw)) return `https://${raw}`;
+  if (/^(?:mobile\.)twitter\.com\//i.test(raw)) return `https://${raw}`;
+  return '';
+}
+
+function matchTweetIdFromPath(pathname) {
+  const match = String(pathname || '').match(
+    /(?:^|\/)(?:status|statuses)\/(\d{5,25})(?:[/?#]|$)|(?:^|\/)i\/(?:web\/)?status\/(\d{5,25})(?:[/?#]|$)/
+  );
+  return match ? (match[1] || match[2]) : null;
 }
 
 async function getTweetMetadata(tweetId) {
@@ -250,7 +311,9 @@ async function fetchTweetMetadata(tweetId) {
     throw new Error('X/Twitter returned invalid JSON for that post.');
   }
 
-  const mediaDetails = Array.isArray(data?.mediaDetails) ? data.mediaDetails : [];
+  const mediaDetails = Array.isArray(data?.mediaDetails)
+    ? data.mediaDetails
+    : (Array.isArray(data?.media_details) ? data.media_details : []);
   const rawVideoMedia = mediaDetails.filter((entry) => VIDEO_TYPES.has(entry?.type));
 
   const mediaItems = [];
@@ -308,7 +371,8 @@ function extractMp4Variants(variants) {
     if (parsed.protocol !== 'https:' || !/(^|\.)twimg\.com$/i.test(parsed.hostname)) continue;
 
     const resolution = (parsed.pathname.match(/\/(\d+x\d+)\//) || [])[1] || '';
-    const bitrate = Number.isFinite(variant.bitrate) ? variant.bitrate : 0;
+    const rawBitrate = Number(variant.bitrate);
+    const bitrate = Number.isFinite(rawBitrate) && rawBitrate > 0 ? rawBitrate : 0;
     const key = `${resolution}|${bitrate}|${parsed.pathname}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -354,6 +418,20 @@ function chooseVariant(variants, variantUrl, qualityPref) {
   }
 }
 
+async function startDownloadWithInflight(metadata, mediaItem, variant, options = {}) {
+  const saveAs = Boolean(options.saveAs);
+  const key = `${metadata.tweetId}|${mediaItem.index}|${variant.url}|${saveAs ? 'saveas' : 'auto'}`;
+
+  if (!inflightDownloads.has(key)) {
+    const task = startDownload(metadata, mediaItem, variant, { saveAs }).finally(() => {
+      setTimeout(() => inflightDownloads.delete(key), 5000);
+    });
+    inflightDownloads.set(key, task);
+  }
+
+  return inflightDownloads.get(key);
+}
+
 async function startDownload(metadata, mediaItem, variant, options = {}) {
   const filename = buildFilename(metadata, mediaItem, variant);
   const saveAs = Boolean(options.saveAs);
@@ -392,10 +470,10 @@ async function startDownload(metadata, mediaItem, variant, options = {}) {
 }
 
 function buildFilename(metadata, mediaItem, variant) {
-  const user = sanitizeFilePart(metadata.fileUser || metadata.screenName || metadata.displayName || 'video');
+  const user = sanitizeFilePart(metadata.fileUser || metadata.screenName || metadata.displayName || 'video') || 'video';
   const mediaPart = metadata.mediaItems.length > 1 ? `m${mediaItem.index + 1}` : '';
   const typePart = mediaItem.mediaType === 'animated_gif' ? 'gif' : '';
-  const resolution = sanitizeFilePart(variant.resolution || 'best');
+  const resolution = sanitizeFilePart(variant.resolution || 'best') || 'best';
   const bitrate = variant.bitrate > 0 ? `${Math.round(variant.bitrate / 1000)}kbps` : 'mp4';
   const snippet = sanitizeFilePart(metadata.text || '').slice(0, 40);
 

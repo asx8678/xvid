@@ -19,7 +19,7 @@
       <form id="lookup-form" novalidate>
         <label for="tweet-input">Post URL or status ID</label>
         <div class="row">
-          <input id="tweet-input" name="tweet-input" type="text" autocomplete="off" spellcheck="false" placeholder="https://x.com/.../status/...">
+          <input id="tweet-input" name="tweet-input" type="text" autocomplete="off" spellcheck="false" placeholder="https://x.com/.../status/..." aria-describedby="status">
           <button id="analyze-btn" type="submit">Analyze</button>
         </div>
       </form>
@@ -78,7 +78,8 @@
       <div class="button-grid">
         <button id="download-btn" type="button" class="primary">Download selected MP4</button>
         <button id="saveas-btn" type="button" class="secondary">Save As…</button>
-        <button id="copy-url-btn" type="button" class="ghost wide">Copy direct MP4 URL</button>
+        <button id="download-all-btn" type="button" class="ghost wide" hidden>Download all media</button>
+        <button id="copy-url-btn" type="button" class="ghost wide">Copy selected direct MP4 URL</button>
       </div>
     </section>
 

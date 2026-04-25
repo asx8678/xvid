@@ -121,7 +121,7 @@ function setButtonVisual(btn, state) {
   }
 }
 
-function resetButtonLater(btn, title = 'Download video (Shift-click for picker, Alt-click for Save As)') {
+function resetButtonLater(btn, title = 'Download video (Shift-click for picker, Alt/Option-click for Save As)') {
   setTimeout(() => {
     if (!btn.isConnected || btn.dataset.busy) return;
     btn.title = title;
@@ -147,8 +147,8 @@ function inject(block) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'xvd';
-  btn.title = 'Download video (Shift-click for picker, Alt-click for Save As)';
-  btn.setAttribute('aria-label', 'Download video');
+  btn.title = 'Download video (Shift-click for picker, Alt/Option-click for Save As)';
+  btn.setAttribute('aria-label', 'Download video. Shift-click opens the picker. Alt or Option-click opens Save As.');
   btn.style.cssText = BTN_CSS;
   btn.appendChild(createIcon());
 
@@ -265,7 +265,8 @@ function scheduleFlush() {
 document.addEventListener('click', (event) => {
   if (!event.isTrusted) return;
 
-  const btn = event.target.closest('.xvd');
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const btn = target?.closest?.('.xvd');
   if (!btn || btn.dataset.busy) return;
 
   event.preventDefault();

@@ -19,6 +19,7 @@ const filenamePreview = document.getElementById('filename-preview');
 const permalink = document.getElementById('permalink');
 const downloadBtn = document.getElementById('download-btn');
 const saveAsBtn = document.getElementById('saveas-btn');
+const downloadAllBtn = document.getElementById('download-all-btn');
 const copyUrlBtn = document.getElementById('copy-url-btn');
 
 const state = {
@@ -99,13 +100,17 @@ function bindEvents() {
     await triggerDownload(true);
   });
 
+  downloadAllBtn.addEventListener('click', async () => {
+    await triggerDownloadAll(promptSaveAs.checked);
+  });
+
   copyUrlBtn.addEventListener('click', async () => {
     const value = variantSelect.value;
     if (!value) return;
 
     try {
       await copyToClipboard(value);
-      setStatus('Copied direct MP4 URL to the clipboard.', 'ok');
+      setStatus('Copied selected direct MP4 URL to the clipboard.', 'ok');
     } catch (err) {
       setStatus(`Could not copy the MP4 URL: ${getErrorMessage(err)}`, 'error');
     }
@@ -138,13 +143,11 @@ async function analyze(rawInput, preferredMediaIndex = 0) {
     return;
   }
 
-  setBusy(true, 'Analyzing post…');
-  const response = await chrome.runtime.sendMessage({
+  const response = await withBusy('Analyzing post…', () => sendRuntimeMessage({
     action: 'probe',
     input: value,
     mediaIndex: parseMediaIndex(preferredMediaIndex),
-  });
-  setBusy(false);
+  }));
 
   if (!response?.ok) {
     clearResult();
@@ -200,6 +203,7 @@ function renderResult() {
   }
 
   mediaSelectWrap.hidden = state.mediaItems.length <= 1;
+  downloadAllBtn.hidden = state.mediaItems.length <= 1;
   updateCurrentMediaView(state.mediaIndex);
 }
 
@@ -235,6 +239,7 @@ function updateCurrentMediaView(preferredIndex = state.mediaIndex) {
   }
 
   updateSelectionPreview();
+  updateDownloadLabels();
 }
 
 function updateSelectionPreview() {
@@ -243,18 +248,20 @@ function updateSelectionPreview() {
 }
 
 async function triggerDownload(saveAs) {
-  if (!state.tweetId || !variantSelect.value) return;
+  if (!state.tweetId || !variantSelect.value) {
+    setStatus('Analyze a post and choose an MP4 variant first.', 'error');
+    return;
+  }
 
   const openingSaveAs = Boolean(saveAs);
-  setBusy(true, openingSaveAs ? 'Opening Save As…' : 'Starting download…');
-  const response = await chrome.runtime.sendMessage({
+  const response = await withBusy(openingSaveAs ? 'Opening Save As…' : 'Starting download…', () => sendRuntimeMessage({
     action: 'download',
     tweetId: state.tweetId,
     mediaIndex: state.mediaIndex,
     variantUrl: variantSelect.value,
+    qualityPref: prefQuality.value,
     saveAs: openingSaveAs,
-  });
-  setBusy(false);
+  }));
 
   if (!response?.ok) {
     setStatus(response?.err || 'Could not start the download.', 'error');
@@ -267,6 +274,32 @@ async function triggerDownload(saveAs) {
       : `Download started: ${response.filename}`,
     'ok'
   );
+}
+
+async function triggerDownloadAll(saveAs) {
+  if (!state.tweetId || state.mediaItems.length <= 1) {
+    setStatus('This post only has one downloadable media item.', 'error');
+    return;
+  }
+
+  const openingSaveAs = Boolean(saveAs);
+  const response = await withBusy(openingSaveAs ? 'Opening Save As dialogs…' : 'Starting all downloads…', () => sendRuntimeMessage({
+    action: 'downloadAll',
+    tweetId: state.tweetId,
+    qualityPref: prefQuality.value,
+    saveAs: openingSaveAs,
+  }));
+
+  if (!response?.ok) {
+    setStatus(response?.err || 'Could not start the downloads.', 'error');
+    return;
+  }
+
+  const failed = Array.isArray(response.errors) ? response.errors.length : 0;
+  const base = openingSaveAs
+    ? `Save As opened for ${response.count} of ${response.requested} media items.`
+    : `Started ${response.count} of ${response.requested} downloads.`;
+  setStatus(failed ? `${base} ${failed} item${failed === 1 ? '' : 's'} failed.` : base, failed ? '' : 'ok');
 }
 
 function getCurrentMedia(preferredIndex = state.mediaIndex) {
@@ -293,12 +326,34 @@ function clearResult() {
   filenamePreview.textContent = '—';
   permalink.href = '#';
   permalink.textContent = 'Open post';
+  downloadAllBtn.hidden = true;
+  updateDownloadLabels();
+}
+
+async function withBusy(message, task) {
+  setBusy(true, message);
+  try {
+    return await task();
+  } catch (err) {
+    return { ok: false, err: getErrorMessage(err) };
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function sendRuntimeMessage(payload) {
+  try {
+    return await chrome.runtime.sendMessage(payload);
+  } catch (err) {
+    return { ok: false, err: getErrorMessage(err) };
+  }
 }
 
 function setBusy(busy, message = '') {
   analyzeBtn.disabled = busy;
   downloadBtn.disabled = busy;
   saveAsBtn.disabled = busy;
+  downloadAllBtn.disabled = busy;
   copyUrlBtn.disabled = busy;
   input.disabled = busy;
   variantSelect.disabled = busy;
@@ -315,9 +370,13 @@ function updateDownloadLabels() {
     ? 'Download selected MP4…'
     : 'Download selected MP4';
   saveAsBtn.textContent = 'Save As…';
+  downloadAllBtn.textContent = promptSaveAs.checked
+    ? 'Download all media…'
+    : 'Download all media';
   if (analyzeBtn.disabled) {
     downloadBtn.textContent = 'Working…';
     saveAsBtn.textContent = 'Working…';
+    downloadAllBtn.textContent = 'Working…';
   }
 }
 
@@ -341,12 +400,38 @@ function pickPreferredVariantUrl(variants, quality) {
   }
 }
 
-function extractTweetId(input) {
-  const raw = String(input || '').trim();
+function extractTweetId(inputValue) {
+  const raw = String(inputValue || '').trim();
   if (!raw) return '';
   if (/^\d{5,25}$/.test(raw)) return raw;
-  const match = raw.match(/(?:\/status\/|\/statuses\/|\/i\/web\/status\/|\/i\/status\/)(\d{5,25})/);
-  return match ? match[1] : '';
+
+  const candidate = buildTweetUrlCandidate(raw);
+  if (candidate) {
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== 'https:') return '';
+      if (!/(^|\.)(x|twitter)\.com$/i.test(url.hostname)) return '';
+      return matchTweetIdFromPath(url.pathname) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  return raw.startsWith('/') ? (matchTweetIdFromPath(raw) || '') : '';
+}
+
+function buildTweetUrlCandidate(raw) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw;
+  if (/^(?:www\.)?(?:x|twitter)\.com\//i.test(raw)) return `https://${raw}`;
+  if (/^(?:mobile\.)twitter\.com\//i.test(raw)) return `https://${raw}`;
+  return '';
+}
+
+function matchTweetIdFromPath(pathname) {
+  const match = String(pathname || '').match(
+    /(?:^|\/)(?:status|statuses)\/(\d{5,25})(?:[/?#]|$)|(?:^|\/)i\/(?:web\/)?status\/(\d{5,25})(?:[/?#]|$)/
+  );
+  return match ? (match[1] || match[2]) : '';
 }
 
 function parseMediaIndex(value) {

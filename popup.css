@@ -34,6 +34,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -44,7 +48,7 @@ body {
 }
 
 body {
-  min-width: 400px;
+  min-width: 360px;
 }
 
 .shell {
@@ -279,4 +283,20 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+
+@media (max-width: 420px) {
+  body {
+    min-width: 320px;
+  }
+
+  .shell {
+    padding: 12px;
+  }
+
+  .row,
+  .button-grid {
+    grid-template-columns: 1fr;
+  }
 }
