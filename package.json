@@ -8,7 +8,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "capture-fixtures": "node scripts/capture-real-fixtures.mjs"
   },
   "devDependencies": {
     "vitest": "^1.6.0",

@@ -1,0 +1,372 @@
+{
+  "__typename": "Tweet",
+  "in_reply_to_screen_name": "NASA",
+  "in_reply_to_status_id_str": "2042756157337424238",
+  "in_reply_to_user_id_str": "11348282",
+  "lang": "en",
+  "favorite_count": 389426,
+  "possibly_sensitive": false,
+  "created_at": "2026-04-11T00:09:40.000Z",
+  "display_text_range": [
+    0,
+    198
+  ],
+  "entities": {
+    "hashtags": [],
+    "urls": [],
+    "user_mentions": [],
+    "symbols": [],
+    "media": [
+      {
+        "indices": [
+          198,
+          221
+        ],
+        "_redacted": true
+      }
+    ]
+  },
+  "id_str": "2042756933686337713",
+  "text": "[REDACTED]",
+  "user": {
+    "id_str": "[REDACTED]",
+    "name": "[REDACTED]",
+    "screen_name": "[REDACTED]",
+    "is_blue_verified": true,
+    "profile_image_shape": "Square",
+    "verified": false,
+    "verified_type": "Government",
+    "profile_image_url_https": "[REDACTED]",
+    "_has_profile_image_url_https": true
+  },
+  "edit_control": {
+    "edit_tweet_ids": [
+      "[REDACTED]"
+    ],
+    "editable_until_msecs": "1775869780000",
+    "is_edit_eligible": false,
+    "edits_remaining": "5"
+  },
+  "mediaDetails": [
+    {
+      "additional_media_info": {},
+      "display_url": "[REDACTED]",
+      "expanded_url": "[REDACTED]",
+      "ext_media_availability": {
+        "status": "Available"
+      },
+      "indices": [
+        198,
+        221
+      ],
+      "media_url_https": "https://pbs.twimg.com/amplify_video_thumb/2042756826111053826/img/yNDBDC9D_d3mBDF-.jpg",
+      "original_info": {
+        "height": 2160,
+        "width": 3840,
+        "focus_rects": []
+      },
+      "sizes": {
+        "large": {
+          "h": 1152,
+          "resize": "fit",
+          "w": 2048
+        },
+        "medium": {
+          "h": 675,
+          "resize": "fit",
+          "w": 1200
+        },
+        "small": {
+          "h": 383,
+          "resize": "fit",
+          "w": 680
+        },
+        "thumb": {
+          "h": 150,
+          "resize": "crop",
+          "w": 150
+        }
+      },
+      "type": "video",
+      "url": "[REDACTED]",
+      "video_info": {
+        "aspect_ratio": [
+          16,
+          9
+        ],
+        "duration_millis": 32405,
+        "variants": [
+          {
+            "content_type": "application/x-mpegURL",
+            "url": "https://video.twimg.com/amplify_video/2042756826111053826/pl/mlWkD7pQU7mxUj3X.m3u8?v=58a"
+          },
+          {
+            "bitrate": 256000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/480x270/oK0B7he8b5fBO-kS.mp4"
+          },
+          {
+            "bitrate": 832000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/640x360/1VCuAKHd8hMTa9wt.mp4"
+          },
+          {
+            "bitrate": 2176000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/1280x720/Wj_RzwJdVfTrL2h2.mp4"
+          },
+          {
+            "bitrate": 10368000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/1920x1080/9-2NVcPMqbw8uLgz.mp4"
+          },
+          {
+            "bitrate": 25128000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/3840x2160/utCRvfDZCRKpceEZ.mp4"
+          }
+        ]
+      },
+      "_has_media_url_https": true
+    }
+  ],
+  "photos": [],
+  "video": {
+    "aspectRatio": [
+      16,
+      9
+    ],
+    "contentType": "media_entity",
+    "durationMs": 32405,
+    "mediaAvailability": {
+      "status": "available"
+    },
+    "poster": "[REDACTED]",
+    "variants": [
+      {
+        "type": "application/x-mpegURL",
+        "src": "https://video.twimg.com/amplify_video/2042756826111053826/pl/mlWkD7pQU7mxUj3X.m3u8?v=58a"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/480x270/oK0B7he8b5fBO-kS.mp4"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/640x360/1VCuAKHd8hMTa9wt.mp4"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/1280x720/Wj_RzwJdVfTrL2h2.mp4"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/1920x1080/9-2NVcPMqbw8uLgz.mp4"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2042756826111053826/vid/avc1/3840x2160/utCRvfDZCRKpceEZ.mp4"
+      }
+    ],
+    "videoId": {
+      "type": "tweet",
+      "id": "2042756933686337713"
+    },
+    "viewCount": 0,
+    "_has_poster": true
+  },
+  "conversation_count": 6784,
+  "news_action_type": "conversation",
+  "parent": {
+    "in_reply_to_screen_name": "NASA",
+    "in_reply_to_status_id_str": "2042748454535917793",
+    "in_reply_to_user_id_str": "11348282",
+    "lang": "en",
+    "reply_count": 655,
+    "retweet_count": 10429,
+    "favorite_count": 50634,
+    "possibly_sensitive": false,
+    "created_at": "2026-04-11T00:06:35.000Z",
+    "display_text_range": [
+      0,
+      212
+    ],
+    "entities": {
+      "hashtags": [],
+      "urls": [
+        {
+          "display_url": "nasa.gov/blogs/artemis/",
+          "expanded_url": "https://www.nasa.gov/blogs/artemis/",
+          "indices": [
+            189,
+            212
+          ],
+          "url": "https://t.co/7gicm7DWBt"
+        }
+      ],
+      "user_mentions": [],
+      "symbols": [],
+      "media": [
+        {
+          "display_url": "pic.x.com/ReXHTfkFld",
+          "expanded_url": "https://x.com/NASA/status/2042756157337424238/video/1",
+          "indices": [
+            213,
+            236
+          ],
+          "url": "https://t.co/ReXHTfkFld"
+        }
+      ]
+    },
+    "id_str": "2042756157337424238",
+    "text": "Orion's main parachute has deployed. The spacecraft has a system of 11 chutes that will slow it down from around 300 mph to 20 mph for splashdown.\n\nGet more updates on the Artemis II blog: https://t.co/7gicm7DWBt https://t.co/ReXHTfkFld",
+    "user": {
+      "id_str": "11348282",
+      "name": "NASA",
+      "screen_name": "NASA",
+      "is_blue_verified": true,
+      "profile_image_shape": "Square",
+      "verified": false,
+      "verified_type": "Government",
+      "profile_image_url_https": "https://pbs.twimg.com/profile_images/1321163587679784960/0ZxKlEKB_normal.jpg"
+    },
+    "edit_control": {
+      "edit_tweet_ids": [
+        "2042756157337424238"
+      ],
+      "editable_until_msecs": "1775869595000",
+      "is_edit_eligible": false,
+      "edits_remaining": "5"
+    },
+    "mediaDetails": [
+      {
+        "additional_media_info": {},
+        "display_url": "pic.x.com/ReXHTfkFld",
+        "expanded_url": "https://x.com/NASA/status/2042756157337424238/video/1",
+        "ext_media_availability": {
+          "status": "Available"
+        },
+        "indices": [
+          213,
+          236
+        ],
+        "media_url_https": "https://pbs.twimg.com/amplify_video_thumb/2042756084645888000/img/2_ke9wQFd7VRxvRv.jpg",
+        "original_info": {
+          "height": 2160,
+          "width": 3840,
+          "focus_rects": []
+        },
+        "sizes": {
+          "large": {
+            "h": 1152,
+            "resize": "fit",
+            "w": 2048
+          },
+          "medium": {
+            "h": 675,
+            "resize": "fit",
+            "w": 1200
+          },
+          "small": {
+            "h": 383,
+            "resize": "fit",
+            "w": 680
+          },
+          "thumb": {
+            "h": 150,
+            "resize": "crop",
+            "w": 150
+          }
+        },
+        "type": "video",
+        "url": "https://t.co/ReXHTfkFld",
+        "video_info": {
+          "aspect_ratio": [
+            16,
+            9
+          ],
+          "duration_millis": 25813,
+          "variants": [
+            {
+              "content_type": "application/x-mpegURL",
+              "url": "https://video.twimg.com/amplify_video/2042756084645888000/pl/dJfZsvvGGkIvwrlo.m3u8?v=2f7"
+            },
+            {
+              "bitrate": 256000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/480x270/8JDOm40KhVf_k_tF.mp4"
+            },
+            {
+              "bitrate": 832000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/640x360/eqy2b466X8Wscr_K.mp4"
+            },
+            {
+              "bitrate": 2176000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/1280x720/iBYyP89uhbhU3fiv.mp4"
+            },
+            {
+              "bitrate": 10368000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/1920x1080/MzU7H6NV82UHrRrY.mp4"
+            },
+            {
+              "bitrate": 25128000,
+              "content_type": "video/mp4",
+              "url": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/3840x2160/UGGCJGbE2D53nR-3.mp4"
+            }
+          ]
+        }
+      }
+    ],
+    "photos": [],
+    "video": {
+      "aspectRatio": [
+        16,
+        9
+      ],
+      "contentType": "media_entity",
+      "durationMs": 25813,
+      "mediaAvailability": {
+        "status": "available"
+      },
+      "poster": "https://pbs.twimg.com/amplify_video_thumb/2042756084645888000/img/2_ke9wQFd7VRxvRv.jpg",
+      "variants": [
+        {
+          "type": "application/x-mpegURL",
+          "src": "https://video.twimg.com/amplify_video/2042756084645888000/pl/dJfZsvvGGkIvwrlo.m3u8?v=2f7"
+        },
+        {
+          "type": "video/mp4",
+          "src": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/480x270/8JDOm40KhVf_k_tF.mp4"
+        },
+        {
+          "type": "video/mp4",
+          "src": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/640x360/eqy2b466X8Wscr_K.mp4"
+        },
+        {
+          "type": "video/mp4",
+          "src": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/1280x720/iBYyP89uhbhU3fiv.mp4"
+        },
+        {
+          "type": "video/mp4",
+          "src": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/1920x1080/MzU7H6NV82UHrRrY.mp4"
+        },
+        {
+          "type": "video/mp4",
+          "src": "https://video.twimg.com/amplify_video/2042756084645888000/vid/avc1/3840x2160/UGGCJGbE2D53nR-3.mp4"
+        }
+      ],
+      "videoId": {
+        "type": "tweet",
+        "id": "2042756157337424238"
+      },
+      "viewCount": 0
+    },
+    "isEdited": false,
+    "isStaleEdit": false
+  },
+  "isEdited": false,
+  "isStaleEdit": false
+}

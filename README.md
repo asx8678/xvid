@@ -43,6 +43,16 @@ npm run test:coverage     # coverage report
 
 The test suite covers `background.js` (≥84% statements) and `popup.js` (≥95% statements) using Vitest with a faithful `chrome.*` API mock. See `tests/setup.js` for the mock factory and `tests/fixtures/` for sample syndication-endpoint responses.
 
+### Capturing real syndication fixtures
+
+To re-capture live `cdn.syndication.twimg.com` responses (with PII redaction) for analysis of `mediaDetails` population rates:
+
+```bash
+npm run capture-fixtures
+```
+
+See `tests/fixtures/real-syndication/README.md` for the redaction policy and `tests/fixtures/real-syndication/analysis.md` for the latest population report.
+
 ### Reporting security issues
 
 See `SECURITY.md` for known dev-toolting advisories and the disclosure policy.
