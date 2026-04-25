@@ -1,0 +1,295 @@
+{
+  "captured": 14,
+  "totalMediaItems": 14,
+  "videoAndGifMediaItems": 14,
+  "populationRates": {
+    "media_url_https": {
+      "populated": 14,
+      "total": 14,
+      "rate": "100.0"
+    },
+    "duration_millis": {
+      "populated": 14,
+      "total": 14,
+      "rate": "100.0"
+    },
+    "aspect_ratio": {
+      "populated": 14,
+      "total": 14,
+      "rate": "100.0"
+    },
+    "variants": {
+      "populated": 14,
+      "total": 14,
+      "rate": "100.0"
+    }
+  },
+  "perTweet": [
+    {
+      "id": "2042756933686337713",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 32405,
+          "aspect_ratio": [
+            16,
+            9
+          ],
+          "variant_count": 6
+        }
+      ]
+    },
+    {
+      "id": "2042757356610818106",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 32405,
+          "aspect_ratio": [
+            16,
+            9
+          ],
+          "variant_count": 6
+        }
+      ]
+    },
+    {
+      "id": "2046355025266671693",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 35218,
+          "aspect_ratio": [
+            9,
+            16
+          ],
+          "variant_count": 5
+        }
+      ]
+    },
+    {
+      "id": "2046595795583955209",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 81148,
+          "aspect_ratio": [
+            16,
+            9
+          ],
+          "variant_count": 6
+        }
+      ]
+    },
+    {
+      "id": "2046602263162949685",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 81148,
+          "aspect_ratio": [
+            16,
+            9
+          ],
+          "variant_count": 6
+        }
+      ]
+    },
+    {
+      "id": "2046632310921924717",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 35218,
+          "aspect_ratio": [
+            9,
+            16
+          ],
+          "variant_count": 5
+        }
+      ]
+    },
+    {
+      "id": "2047018269446455578",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 19227,
+          "aspect_ratio": [
+            9,
+            16
+          ],
+          "variant_count": 4
+        }
+      ]
+    },
+    {
+      "id": "2047033500486791223",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 19227,
+          "aspect_ratio": [
+            9,
+            16
+          ],
+          "variant_count": 4
+        }
+      ]
+    },
+    {
+      "id": "2047709335204102318",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 379266,
+          "aspect_ratio": [
+            16,
+            9
+          ],
+          "variant_count": 4
+        }
+      ]
+    },
+    {
+      "id": "2047734958077202845",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 100766,
+          "aspect_ratio": [
+            1,
+            1
+          ],
+          "variant_count": 5
+        }
+      ]
+    },
+    {
+      "id": "2047737165308674546",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 100766,
+          "aspect_ratio": [
+            1,
+            1
+          ],
+          "variant_count": 5
+        }
+      ]
+    },
+    {
+      "id": "2047740381690011787",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 379266,
+          "aspect_ratio": [
+            16,
+            9
+          ],
+          "variant_count": 4
+        }
+      ]
+    },
+    {
+      "id": "2047785307236413636",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 63200,
+          "aspect_ratio": [
+            9,
+            16
+          ],
+          "variant_count": 4
+        }
+      ]
+    },
+    {
+      "id": "2047785574757478731",
+      "typename": "Tweet",
+      "mediaCount": 1,
+      "media": [
+        {
+          "type": "video",
+          "has_media_url_https": true,
+          "media_url_https_present": true,
+          "has_video_info": true,
+          "duration_millis": 63200,
+          "aspect_ratio": [
+            9,
+            16
+          ],
+          "variant_count": 4
+        }
+      ]
+    }
+  ]
+}

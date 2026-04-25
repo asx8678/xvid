@@ -24,6 +24,7 @@ node_modules/
 .dolt/
 *.db
 .beads-credential-key
+issues.jsonl
 
 # Test artifacts
 coverage/

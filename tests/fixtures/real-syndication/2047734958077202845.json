@@ -1,0 +1,190 @@
+{
+  "__typename": "Tweet",
+  "lang": "en",
+  "favorite_count": 3667,
+  "possibly_sensitive": false,
+  "created_at": "2026-04-24T17:50:33.000Z",
+  "display_text_range": [
+    0,
+    273
+  ],
+  "entities": {
+    "hashtags": [],
+    "urls": [],
+    "user_mentions": [
+      {
+        "_redacted": true
+      }
+    ],
+    "symbols": [],
+    "media": [
+      {
+        "indices": [
+          269,
+          292
+        ],
+        "_redacted": true
+      }
+    ]
+  },
+  "id_str": "2047734958077202845",
+  "text": "[REDACTED]",
+  "user": {
+    "id_str": "[REDACTED]",
+    "name": "[REDACTED]",
+    "screen_name": "[REDACTED]",
+    "is_blue_verified": true,
+    "profile_image_shape": "Circle",
+    "verified": false,
+    "verified_type": "Government",
+    "profile_image_url_https": "[REDACTED]",
+    "highlighted_label": {
+      "description": "[REDACTED]",
+      "badge": {
+        "url": "[REDACTED]"
+      },
+      "url": {
+        "url": "[REDACTED]",
+        "url_type": "DeepLink"
+      },
+      "user_label_type": "BusinessLabel",
+      "user_label_display_type": "Badge"
+    },
+    "_has_profile_image_url_https": true
+  },
+  "edit_control": {
+    "edit_tweet_ids": [
+      "[REDACTED]"
+    ],
+    "editable_until_msecs": "1777056633000",
+    "is_edit_eligible": true,
+    "edits_remaining": "5"
+  },
+  "mediaDetails": [
+    {
+      "additional_media_info": {
+        "description": "[REDACTED]",
+        "embeddable": true,
+        "title": "NASA Minute: April 24, 2026"
+      },
+      "display_url": "[REDACTED]",
+      "expanded_url": "[REDACTED]",
+      "ext_media_availability": {
+        "status": "Available"
+      },
+      "indices": [
+        269,
+        292
+      ],
+      "media_url_https": "https://pbs.twimg.com/media/HGsDy6sXkAALXa1.jpg",
+      "original_info": {
+        "height": 1280,
+        "width": 1280,
+        "focus_rects": []
+      },
+      "sizes": {
+        "large": {
+          "h": 1280,
+          "resize": "fit",
+          "w": 1280
+        },
+        "medium": {
+          "h": 1200,
+          "resize": "fit",
+          "w": 1200
+        },
+        "small": {
+          "h": 680,
+          "resize": "fit",
+          "w": 680
+        },
+        "thumb": {
+          "h": 150,
+          "resize": "crop",
+          "w": 150
+        }
+      },
+      "type": "video",
+      "url": "[REDACTED]",
+      "video_info": {
+        "aspect_ratio": [
+          1,
+          1
+        ],
+        "duration_millis": 100766,
+        "variants": [
+          {
+            "content_type": "application/x-mpegURL",
+            "url": "https://video.twimg.com/amplify_video/2047734520938430464/pl/1EgWmTNfe4U-FFHu.m3u8?v=ee0"
+          },
+          {
+            "bitrate": 432000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/320x320/bPB9STW4M6-r9HQ_.mp4"
+          },
+          {
+            "bitrate": 832000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/540x540/YiWbhBy8x05EJY2D.mp4"
+          },
+          {
+            "bitrate": 1280000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/720x720/IzTj7Ow_7LBBlp-c.mp4"
+          },
+          {
+            "bitrate": 8768000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/1080x1080/WlmFNPEEDWdw7J4Q.mp4"
+          }
+        ]
+      },
+      "_has_media_url_https": true
+    }
+  ],
+  "photos": [],
+  "video": {
+    "aspectRatio": [
+      1,
+      1
+    ],
+    "contentType": "media_entity",
+    "durationMs": 100766,
+    "mediaAvailability": {
+      "status": "available"
+    },
+    "poster": "[REDACTED]",
+    "variants": [
+      {
+        "type": "application/x-mpegURL",
+        "src": "https://video.twimg.com/amplify_video/2047734520938430464/pl/1EgWmTNfe4U-FFHu.m3u8?v=ee0"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/320x320/bPB9STW4M6-r9HQ_.mp4"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/540x540/YiWbhBy8x05EJY2D.mp4"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/720x720/IzTj7Ow_7LBBlp-c.mp4"
+      },
+      {
+        "type": "video/mp4",
+        "src": "https://video.twimg.com/amplify_video/2047734520938430464/vid/avc1/1080x1080/WlmFNPEEDWdw7J4Q.mp4"
+      }
+    ],
+    "videoId": {
+      "type": "tweet",
+      "id": "2047734958077202845"
+    },
+    "viewCount": 0,
+    "_has_poster": true
+  },
+  "conversation_count": 177,
+  "news_action_type": "conversation",
+  "isEdited": false,
+  "isStaleEdit": false
+}
