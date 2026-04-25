@@ -8,7 +8,7 @@ export default defineConfig({
       ['tests/content.test.js', 'jsdom'],
     ],
     setupFiles: ['./tests/setup.js'],
-    include: ['tests/**/*.test.js'],
+    include: ['tests/**/*.test.js', 'tests/**/*.test.mjs'],
     coverage: {
       include: ['background.js', 'popup.js'],
     },
