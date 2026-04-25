@@ -166,11 +166,13 @@ async function handleDownloadAll(msg) {
     };
   }
 
+  const dedupedCount = downloads.filter((entry) => entry && entry.deduped).length;
   return {
     ok: true,
     tweetId,
     requested: metadata.mediaItems.length,
     count: downloads.length,
+    dedupedCount,
     saveAs,
     downloads,
     errors,
@@ -426,14 +428,31 @@ async function startDownloadWithInflight(metadata, mediaItem, variant, options =
   const saveAs = Boolean(options.saveAs);
   const key = `${metadata.tweetId}|${mediaItem.index}|${variant.url}|${saveAs ? 'saveas' : 'auto'}`;
 
-  if (!inflightDownloads.has(key)) {
-    const task = startDownload(metadata, mediaItem, variant, { saveAs }).finally(() => {
-      setTimeout(() => inflightDownloads.delete(key), 5000);
-    });
-    inflightDownloads.set(key, task);
+  const existing = inflightDownloads.get(key);
+  if (existing) {
+    // Already-pending request: dedupe to the same promise.
+    // Already-settled request kept briefly to absorb double-clicks: tag the
+    // replayed result so callers can avoid claiming a fresh download started.
+    return existing.settled
+      ? existing.promise.then((result) => ({ ...result, deduped: true }))
+      : existing.promise;
   }
 
-  return inflightDownloads.get(key);
+  const entry = { settled: false, promise: null };
+  entry.promise = startDownload(metadata, mediaItem, variant, { saveAs }).then(
+    (result) => {
+      entry.settled = true;
+      setTimeout(() => inflightDownloads.delete(key), 5000);
+      return result;
+    },
+    (err) => {
+      // Drop failed entries immediately so a retry can actually retry.
+      inflightDownloads.delete(key);
+      throw err;
+    }
+  );
+  inflightDownloads.set(key, entry);
+  return entry.promise;
 }
 
 async function startDownload(metadata, mediaItem, variant, options = {}) {
