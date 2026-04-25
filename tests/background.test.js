@@ -732,6 +732,55 @@ describe('formatVariantLabel', () => {
   });
 });
 
+// ─── formatDurationLabel ─────────────────────────────────────────────────
+
+describe('formatDurationLabel', () => {
+  it('formats 30000ms as 0:30', () => {
+    expect(T.formatDurationLabel(30000)).toBe('0:30');
+  });
+
+  it('formats 15000ms as 0:15', () => {
+    expect(T.formatDurationLabel(15000)).toBe('0:15');
+  });
+
+  it('formats 63200ms as 1:03', () => {
+    expect(T.formatDurationLabel(63200)).toBe('1:03');
+  });
+
+  it('formats 379266ms (rounded) as 6:19', () => {
+    expect(T.formatDurationLabel(379266)).toBe('6:19');
+  });
+
+  it('formats 0ms as empty string', () => {
+    expect(T.formatDurationLabel(0)).toBe('');
+  });
+
+  it('formats negative as empty string', () => {
+    expect(T.formatDurationLabel(-5000)).toBe('');
+  });
+
+  it('handles non-number input as empty string', () => {
+    expect(T.formatDurationLabel(null)).toBe('');
+    expect(T.formatDurationLabel(undefined)).toBe('');
+    expect(T.formatDurationLabel('30000')).toBe('');
+  });
+
+  it('pads seconds with leading zero when < 10', () => {
+    expect(T.formatDurationLabel(5000)).toBe('0:05');
+    expect(T.formatDurationLabel(9000)).toBe('0:09');
+  });
+
+  it('formats exact minutes', () => {
+    expect(T.formatDurationLabel(60000)).toBe('1:00');
+    expect(T.formatDurationLabel(120000)).toBe('2:00');
+  });
+
+  it('rounds milliseconds to nearest second', () => {
+    expect(T.formatDurationLabel(15499)).toBe('0:15');
+    expect(T.formatDurationLabel(15500)).toBe('0:16');
+  });
+});
+
 // ─── formatMediaItemLabel ────────────────────────────────────────────────
 
 describe('formatMediaItemLabel', () => {
@@ -836,5 +885,240 @@ describe('Cache TTL (via safe API)', () => {
 
   it('CACHE_TTL_MS is 90 seconds', () => {
     expect(T.CACHE_TTL_MS).toBe(90_000);
+  });
+});
+
+// ─── Metadata extraction: thumbnailUrl and durationMillis ───────────────
+
+describe('Metadata extraction: thumbnailUrl and durationMillis', () => {
+  it('extracts thumbnailUrl from media_url_https when valid HTTPS', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mediaDetails: [{
+          type: 'video',
+          media_url_https: 'https://pbs.twimg.com/media/thumb.jpg',
+          video_info: {
+            duration_millis: 30000,
+            variants: [{
+              content_type: 'video/mp4',
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000,
+            }],
+          },
+        }],
+        user: { screen_name: 'test' },
+        text: 'test',
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555511111' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('https://pbs.twimg.com/media/thumb.jpg');
+    expect(result.mediaItems[0].durationMillis).toBe(30000);
+    expect(result.mediaItems[0].durationLabel).toBe('0:30');
+  });
+
+  it('omits thumbnailUrl when media_url_https is http (non-HTTPS)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mediaDetails: [{
+          type: 'video',
+          media_url_https: 'http://pbs.twimg.com/media/thumb.jpg',
+          video_info: {
+            duration_millis: 15000,
+            variants: [{
+              content_type: 'video/mp4',
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000,
+            }],
+          },
+        }],
+        user: { screen_name: 'test' },
+        text: 'test',
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555522222' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('');
+    expect(result.mediaItems[0].durationMillis).toBe(15000);
+    expect(result.mediaItems[0].durationLabel).toBe('0:15');
+  });
+
+  it('omits thumbnailUrl when media_url_https is missing', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mediaDetails: [{
+          type: 'video',
+          video_info: {
+            duration_millis: 22000,
+            variants: [{
+              content_type: 'video/mp4',
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000,
+            }],
+          },
+        }],
+        user: { screen_name: 'test' },
+        text: 'test',
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555533333' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('');
+    expect(result.mediaItems[0].durationMillis).toBe(22000);
+    expect(result.mediaItems[0].durationLabel).toBe('0:22');
+  });
+
+  it('sets durationMillis to 0 and durationLabel to empty when duration_millis is missing', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mediaDetails: [{
+          type: 'video',
+          media_url_https: 'https://pbs.twimg.com/media/thumb.jpg',
+          video_info: {
+            variants: [{
+              content_type: 'video/mp4',
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000,
+            }],
+          },
+        }],
+        user: { screen_name: 'test' },
+        text: 'test',
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555544444' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('https://pbs.twimg.com/media/thumb.jpg');
+    expect(result.mediaItems[0].durationMillis).toBe(0);
+    expect(result.mediaItems[0].durationLabel).toBe('');
+  });
+
+  it('sets durationMillis to 0 when duration_millis is negative', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mediaDetails: [{
+          type: 'video',
+          video_info: {
+            duration_millis: -100,
+            variants: [{
+              content_type: 'video/mp4',
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000,
+            }],
+          },
+        }],
+        user: { screen_name: 'test' },
+        text: 'test',
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555555555' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems[0].durationMillis).toBe(0);
+    expect(result.mediaItems[0].durationLabel).toBe('');
+  });
+
+  it('extracts metadata for multi-media posts', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mediaDetails: [
+          {
+            type: 'video',
+            media_url_https: 'https://pbs.twimg.com/media/vid1.jpg',
+            video_info: {
+              duration_millis: 15000,
+              variants: [{
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/test/pu/vid/1280x720/a.mp4',
+                bitrate: 2176000,
+              }],
+            },
+          },
+          {
+            type: 'animated_gif',
+            media_url_https: 'https://pbs.twimg.com/media/vid2.jpg',
+            video_info: {
+              duration_millis: 5000,
+              variants: [{
+                content_type: 'video/mp4',
+                url: 'https://video.twimg.com/tw_vod_gif/test/pu/vid/480x480/b.mp4',
+                bitrate: 0,
+              }],
+            },
+          },
+        ],
+        user: { screen_name: 'test' },
+        text: 'multi',
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555566666' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems).toHaveLength(2);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('https://pbs.twimg.com/media/vid1.jpg');
+    expect(result.mediaItems[0].durationMillis).toBe(15000);
+    expect(result.mediaItems[0].durationLabel).toBe('0:15');
+    expect(result.mediaItems[1].thumbnailUrl).toBe('https://pbs.twimg.com/media/vid2.jpg');
+    expect(result.mediaItems[1].durationMillis).toBe(5000);
+    expect(result.mediaItems[1].durationLabel).toBe('0:05');
+  });
+
+  it('handles snake_case media_details with thumbnailUrl and duration', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        media_details: [{
+          type: 'video',
+          media_url_https: 'https://pbs.twimg.com/media/snake.jpg',
+          video_info: {
+            duration_millis: 20000,
+            variants: [{
+              content_type: 'video/mp4',
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000,
+            }],
+          },
+        }],
+        user: { screen_name: 'test' },
+        text: 'snake',
+      }),
+      body: { cancel: vi.fn() },
+    });
+
+    const chrome = globalThis.chrome;
+    const result = await chrome.runtime.sendMessage({ action: 'probe', input: '5555577777' });
+    expect(result.ok).toBe(true);
+    expect(result.mediaItems[0].thumbnailUrl).toBe('https://pbs.twimg.com/media/snake.jpg');
+    expect(result.mediaItems[0].durationMillis).toBe(20000);
+    expect(result.mediaItems[0].durationLabel).toBe('0:20');
   });
 });

@@ -21,6 +21,9 @@ const downloadBtn = document.getElementById('download-btn');
 const saveAsBtn = document.getElementById('saveas-btn');
 const downloadAllBtn = document.getElementById('download-all-btn');
 const copyUrlBtn = document.getElementById('copy-url-btn');
+const mediaPreview = document.getElementById('media-preview');
+const mediaThumbnail = document.getElementById('media-thumbnail');
+const mediaDuration = document.getElementById('media-duration');
 
 const state = {
   tweetId: '',
@@ -238,6 +241,7 @@ function updateCurrentMediaView(preferredIndex = state.mediaIndex) {
     variantSelect.value = mediaItem.variants[0].url;
   }
 
+  renderMediaPreview(mediaItem);
   updateSelectionPreview();
   updateDownloadLabels();
 }
@@ -245,6 +249,40 @@ function updateCurrentMediaView(preferredIndex = state.mediaIndex) {
 function updateSelectionPreview() {
   const option = variantSelect.selectedOptions[0];
   filenamePreview.textContent = option?.dataset.filename || '—';
+}
+
+function renderMediaPreview(mediaItem) {
+  const hasThumbnail = typeof mediaItem.thumbnailUrl === 'string' && mediaItem.thumbnailUrl.startsWith('https://');
+  const hasDuration = typeof mediaItem.durationLabel === 'string' && mediaItem.durationLabel !== '';
+
+  if (!hasThumbnail && !hasDuration) {
+    mediaPreview.hidden = true;
+    return;
+  }
+
+  mediaPreview.hidden = false;
+
+  if (hasThumbnail) {
+    mediaThumbnail.hidden = false;
+    mediaThumbnail.src = mediaItem.thumbnailUrl;
+    const kind = mediaItem.mediaType === 'animated_gif' ? 'Animated GIF' : 'Video';
+    const ordinal = state.mediaItems.length > 1 ? ` ${mediaItem.index + 1}` : '';
+    mediaThumbnail.alt = `Thumbnail for ${kind}${ordinal}`;
+  } else {
+    mediaThumbnail.hidden = true;
+    mediaThumbnail.src = '';
+    mediaThumbnail.alt = '';
+  }
+
+  if (hasDuration) {
+    mediaDuration.hidden = false;
+    mediaDuration.textContent = mediaItem.durationLabel;
+    mediaDuration.setAttribute('aria-label', `Duration: ${mediaItem.durationLabel}`);
+  } else {
+    mediaDuration.textContent = '';
+    mediaDuration.removeAttribute('aria-label');
+    mediaDuration.hidden = true;
+  }
 }
 
 async function triggerDownload(saveAs) {
@@ -342,6 +380,11 @@ function clearResult() {
   mediaSelect.innerHTML = '';
   variantSelect.innerHTML = '';
   filenamePreview.textContent = '—';
+  mediaPreview.hidden = true;
+  mediaThumbnail.removeAttribute('src');
+  mediaThumbnail.alt = '';
+  mediaDuration.textContent = '';
+  mediaDuration.removeAttribute('aria-label');
   permalink.href = '#';
   permalink.textContent = 'Open post';
   downloadAllBtn.hidden = true;

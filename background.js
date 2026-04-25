@@ -99,6 +99,9 @@ async function handleProbe(msg) {
       index: item.index,
       mediaType: item.mediaType,
       label: formatMediaItemLabel(item, metadata.mediaItems.length),
+      thumbnailUrl: item.thumbnailUrl || '',
+      durationMillis: item.durationMillis || 0,
+      durationLabel: item.durationLabel || '',
       variants: item.variants.map((variant) => ({
         url: variant.url,
         bitrate: variant.bitrate,
@@ -323,10 +326,20 @@ async function fetchTweetMetadata(tweetId) {
     const variants = extractMp4Variants(media?.video_info?.variants ?? []);
     if (!variants.length) continue;
 
+    const thumbnailUrl = typeof media.media_url_https === 'string' && media.media_url_https.startsWith('https://')
+      ? media.media_url_https
+      : '';
+    const durationMillis = typeof media.video_info?.duration_millis === 'number' && media.video_info.duration_millis > 0
+      ? media.video_info.duration_millis
+      : 0;
+
     mediaItems.push({
       index: mediaItems.length,
       mediaType: media.type,
       variants,
+      thumbnailUrl,
+      durationMillis,
+      durationLabel: formatDurationLabel(durationMillis),
     });
   }
 
@@ -517,6 +530,14 @@ function formatVariantLabel({ bitrate, resolution }) {
   return pieces.join(' • ');
 }
 
+function formatDurationLabel(millis) {
+  if (typeof millis !== 'number' || millis <= 0) return '';
+  const totalSeconds = Math.round(millis / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 function formatMediaItemLabel(item, totalCount) {
   const kind = item.mediaType === 'animated_gif' ? 'Animated GIF' : 'Video';
   const variants = `${item.variants.length} variant${item.variants.length === 1 ? '' : 's'}`;
@@ -574,6 +595,7 @@ if (typeof globalThis.__XVID_TEST__ !== 'undefined') {
     buildFilename,
     formatVariantLabel,
     formatMediaItemLabel,
+    formatDurationLabel,
     resolutionArea,
     getErrorMessage,
     CACHE_TTL_MS,

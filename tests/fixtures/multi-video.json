@@ -9,6 +9,7 @@
   "mediaDetails": [
     {
       "type": "video",
+      "media_url_https": "https://pbs.twimg.com/media/vid1_thumb.jpg",
       "video_info": {
         "aspect_ratio": [16, 9],
         "duration_millis": 15000,
@@ -33,6 +34,7 @@
     },
     {
       "type": "video",
+      "media_url_https": "https://pbs.twimg.com/media/vid2_thumb.jpg",
       "video_info": {
         "aspect_ratio": [1, 1],
         "duration_millis": 22000,

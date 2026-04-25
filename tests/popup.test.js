@@ -76,6 +76,9 @@ function buildProbeResponse(overrides = {}) {
       index: 0,
       mediaType: 'video',
       label: 'Video • 3 variants',
+      thumbnailUrl: 'https://pbs.twimg.com/media/abc.jpg',
+      durationMillis: 30000,
+      durationLabel: '0:30',
       variants: mp4Variants.map(v => {
         const res = (v.url.match(/\/(\d+x\d+)\//) || [])[1] || '';
         const bitrate = typeof v.bitrate === 'string' ? parseInt(v.bitrate, 10) || 0 : (v.bitrate || 0);
@@ -100,6 +103,8 @@ function buildMultiMediaProbeResponse() {
     mediaItems: [
       {
         index: 0, mediaType: 'video', label: 'Media 1 • Video • 1 variant',
+        thumbnailUrl: 'https://pbs.twimg.com/media/vid1_thumb.jpg',
+        durationMillis: 15000, durationLabel: '0:15',
         variants: [{
           url: 'https://video.twimg.com/ext_tw_video/2222222222/pu/vid/1280x720/vid1.mp4',
           bitrate: 2176000, resolution: '1280x720', label: '1280x720 • 2176 kbps', filename: 'test1.mp4',
@@ -107,6 +112,8 @@ function buildMultiMediaProbeResponse() {
       },
       {
         index: 1, mediaType: 'animated_gif', label: 'Media 2 • Animated GIF • 1 variant',
+        thumbnailUrl: 'https://pbs.twimg.com/media/vid2_thumb.jpg',
+        durationMillis: 5000, durationLabel: '0:05',
         variants: [{
           url: 'https://video.twimg.com/tw_vod_gif/2222222222/pu/vid/480x480/gif1.mp4',
           bitrate: 0, resolution: '480x480', label: '480x480 • MP4', filename: 'test2.mp4',
@@ -961,5 +968,249 @@ describe('Post rendering branches', () => {
       expect(document.getElementById('result-card').hidden).toBe(false);
       expect(document.getElementById('post-text').hidden).toBe(true);
     });
+  });
+});
+
+// ─── Media preview: thumbnail and duration ────────────────────────────────
+
+describe('Media preview: thumbnail and duration', () => {
+  it('shows media preview with thumbnail and duration for single video', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') return buildProbeResponse();
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '1111111111';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('result-card').hidden).toBe(false);
+    });
+
+    const preview = document.getElementById('media-preview');
+    const thumbnail = document.getElementById('media-thumbnail');
+    const duration = document.getElementById('media-duration');
+    expect(preview.hidden).toBe(false);
+    expect(thumbnail.hidden).toBe(false);
+    expect(thumbnail.src).toContain('pbs.twimg.com');
+    expect(thumbnail.alt).toContain('Thumbnail');
+    expect(duration.hidden).toBe(false);
+    expect(duration.textContent).toBe('0:30');
+  });
+
+  it('shows thumbnail with accessible alt text for single media', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') return buildProbeResponse();
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '1111111111';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-thumbnail').alt).toBe('Thumbnail for Video');
+    });
+  });
+
+  it('shows thumbnail with ordinal in alt text for multi-media', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') return buildMultiMediaProbeResponse();
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '2222222222';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-thumbnail').alt).toBe('Thumbnail for Video 1');
+    });
+  });
+
+  it('uses lazy loading and async decoding for thumbnail', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') return buildProbeResponse();
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '1111111111';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      const thumbnail = document.getElementById('media-thumbnail');
+      expect(thumbnail.getAttribute('loading')).toBe('lazy');
+      expect(thumbnail.getAttribute('decoding')).toBe('async');
+    });
+  });
+
+  it('updates preview when switching media items', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') return buildMultiMediaProbeResponse();
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '2222222222';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-select').options.length).toBe(2);
+    });
+
+    // First media item
+    const thumbnail = document.getElementById('media-thumbnail');
+    const duration = document.getElementById('media-duration');
+    expect(thumbnail.src).toContain('vid1_thumb');
+    expect(duration.textContent).toBe('0:15');
+    expect(thumbnail.alt).toContain('Video');
+
+    // Switch to second media item (animated_gif)
+    const mediaSelect = document.getElementById('media-select');
+    mediaSelect.value = '1';
+    mediaSelect.dispatchEvent(new Event('change'));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-thumbnail').src).toContain('vid2_thumb');
+    });
+    expect(duration.textContent).toBe('0:05');
+    expect(thumbnail.alt).toContain('Animated GIF');
+  });
+
+  it('duration has aria-label for accessibility', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') return buildProbeResponse();
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '1111111111';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-duration').getAttribute('aria-label')).toBe('Duration: 0:30');
+    });
+  });
+});
+
+// ─── Media preview: graceful fallback ────────────────────────────────────
+
+describe('Media preview: graceful fallback', () => {
+  it('hides preview when both thumbnailUrl and durationLabel are empty', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') {
+        return buildProbeResponse({
+          mediaItems: [{
+            index: 0, mediaType: 'video', label: 'Video • 1 variant',
+            thumbnailUrl: '', durationMillis: 0, durationLabel: '',
+            variants: [{
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000, resolution: '640x360', label: '640x360 • 832 kbps', filename: 'test.mp4',
+            }],
+          }],
+          tweetId: '3333333333',
+        });
+      }
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '3333333333';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-preview').hidden).toBe(true);
+    });
+  });
+
+  it('shows preview with duration but no thumbnail when thumbnailUrl is empty', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') {
+        return buildProbeResponse({
+          mediaItems: [{
+            index: 0, mediaType: 'video', label: 'Video • 1 variant',
+            thumbnailUrl: '', durationMillis: 30000, durationLabel: '0:30',
+            variants: [{
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000, resolution: '640x360', label: '640x360 • 832 kbps', filename: 'test.mp4',
+            }],
+          }],
+          tweetId: '4444444444',
+        });
+      }
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '4444444444';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    // Wait for the thumbnail to be hidden (specific to this probe response)
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-thumbnail').hidden).toBe(true);
+    });
+    expect(document.getElementById('media-preview').hidden).toBe(false);
+    expect(document.getElementById('media-thumbnail').getAttribute('src') || '').toBe('');
+    expect(document.getElementById('media-duration').hidden).toBe(false);
+    expect(document.getElementById('media-duration').textContent).toBe('0:30');
+  });
+
+  it('shows preview with thumbnail but no duration when durationLabel is empty', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') {
+        return buildProbeResponse({
+          mediaItems: [{
+            index: 0, mediaType: 'video', label: 'Video • 1 variant',
+            thumbnailUrl: 'https://pbs.twimg.com/media/abc.jpg', durationMillis: 0, durationLabel: '',
+            variants: [{
+              url: 'https://video.twimg.com/test/pu/vid/640x360/a.mp4',
+              bitrate: 832000, resolution: '640x360', label: '640x360 • 832 kbps', filename: 'test.mp4',
+            }],
+          }],
+          tweetId: '5555555555',
+        });
+      }
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '5555555555';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    // Wait for the duration to be hidden (specific to this probe response)
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-duration').hidden).toBe(true);
+    });
+    expect(document.getElementById('media-preview').hidden).toBe(false);
+    expect(document.getElementById('media-thumbnail').hidden).toBe(false);
+  });
+
+  it('clears preview on clearResult', async () => {
+    chrome.runtime.__setSendMessage(async (payload) => {
+      if (payload.action === 'probe') return buildProbeResponse();
+      return { ok: false };
+    });
+    const input = document.getElementById('tweet-input');
+    input.value = '1111111111';
+    const form = document.getElementById('lookup-form');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('media-preview').hidden).toBe(false);
+    });
+
+    // Trigger clearResult by submitting empty input
+    chrome.runtime.__setSendMessage(async () => ({ ok: false, err: 'fail' }));
+    input.value = '';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('result-card').hidden).toBe(true);
+    });
+    expect(document.getElementById('media-preview').hidden).toBe(true);
+    expect(document.getElementById('media-thumbnail').getAttribute('src')).toBeNull();
+    expect(document.getElementById('media-duration').textContent).toBe('');
   });
 });
