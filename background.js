@@ -559,3 +559,33 @@ function getErrorMessage(err) {
   if (err instanceof Error && err.message) return err.message;
   return typeof err === 'string' && err ? err : 'Unknown error';
 }
+
+if (typeof globalThis.__XVID_TEST__ !== 'undefined') {
+  globalThis.__XVID_TEST__ = Object.freeze({
+    normalizeTweetId,
+    buildTweetUrlCandidate,
+    matchTweetIdFromPath,
+    extractMp4Variants,
+    chooseVariant,
+    pickMediaItem,
+    resolveQualityPref,
+    sanitizeFilePart,
+    sanitizeText,
+    buildFilename,
+    formatVariantLabel,
+    formatMediaItemLabel,
+    resolutionArea,
+    getErrorMessage,
+    CACHE_TTL_MS,
+    clearCaches() {
+      metadataCache.clear();
+      inflightDownloads.clear();
+    },
+    cacheSizes() {
+      return {
+        metadataCache: metadataCache.size,
+        inflightDownloads: inflightDownloads.size,
+      };
+    },
+  });
+}

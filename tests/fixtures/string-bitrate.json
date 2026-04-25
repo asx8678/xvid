@@ -1,0 +1,45 @@
+{
+  "__typename": "Tweet",
+  "lang": "en",
+  "text": "Testing string bitrate regression from v2.3.0",
+  "user": {
+    "screen_name": "regressiontester",
+    "name": "Regression Tester"
+  },
+  "mediaDetails": [
+    {
+      "type": "video",
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "duration_millis": 10000,
+        "variants": [
+          {
+            "bitrate": "2176000",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/5555555555/pu/vid/1280x720/str_high.mp4?tag=14"
+          },
+          {
+            "bitrate": "832000",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/5555555555/pu/vid/640x360/str_med.mp4?tag=14"
+          },
+          {
+            "bitrate": "256000",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/5555555555/pu/vid/320x180/str_low.mp4?tag=14"
+          },
+          {
+            "bitrate": "",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/5555555555/pu/vid/320x180/str_empty.mp4?tag=14"
+          },
+          {
+            "bitrate": "not-a-number",
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/5555555555/pu/vid/320x180/str_nan.mp4?tag=14"
+          }
+        ]
+      }
+    }
+  ]
+}

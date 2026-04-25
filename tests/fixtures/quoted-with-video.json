@@ -1,0 +1,34 @@
+{
+  "__typename": "Tweet",
+  "lang": "en",
+  "text": "Check out this quoted post with video",
+  "user": {
+    "screen_name": "quoter",
+    "name": "Quote Tweeter"
+  },
+  "quoted_status": {
+    "__typename": "Tombstone",
+    "text": "This tweet is unavailable"
+  },
+  "mediaDetails": [
+    {
+      "type": "video",
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "duration_millis": 45000,
+        "variants": [
+          {
+            "bitrate": 3200000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/4444444444/pu/vid/1920x1080/quoted_high.mp4?tag=14"
+          },
+          {
+            "bitrate": 832000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/4444444444/pu/vid/640x360/quoted_med.mp4?tag=14"
+          }
+        ]
+      }
+    }
+  ]
+}

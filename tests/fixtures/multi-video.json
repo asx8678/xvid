@@ -1,0 +1,59 @@
+{
+  "__typename": "Tweet",
+  "lang": "en",
+  "text": "Here are two videos in one post!",
+  "user": {
+    "screen_name": "multimediaposter",
+    "name": "Multi Media"
+  },
+  "mediaDetails": [
+    {
+      "type": "video",
+      "video_info": {
+        "aspect_ratio": [16, 9],
+        "duration_millis": 15000,
+        "variants": [
+          {
+            "bitrate": 2176000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/2222222222/pu/vid/1280x720/vid1_high.mp4?tag=14"
+          },
+          {
+            "bitrate": 832000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/2222222222/pu/vid/640x360/vid1_med.mp4?tag=14"
+          },
+          {
+            "bitrate": 256000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/2222222222/pu/vid/320x180/vid1_low.mp4?tag=14"
+          }
+        ]
+      }
+    },
+    {
+      "type": "video",
+      "video_info": {
+        "aspect_ratio": [1, 1],
+        "duration_millis": 22000,
+        "variants": [
+          {
+            "bitrate": 1280000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/2222222222/pu/vid/720x720/vid2_high.mp4?tag=14"
+          },
+          {
+            "bitrate": 632000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/2222222222/pu/vid/480x480/vid2_med.mp4?tag=14"
+          },
+          {
+            "bitrate": 320000,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/ext_tw_video/2222222222/pu/vid/320x320/vid2_low.mp4?tag=14"
+          }
+        ]
+      }
+    }
+  ]
+}

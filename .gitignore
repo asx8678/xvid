@@ -24,3 +24,7 @@ node_modules/
 .dolt/
 *.db
 .beads-credential-key
+
+# Test artifacts
+coverage/
+.vitest-cache/

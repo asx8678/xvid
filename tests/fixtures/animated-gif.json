@@ -1,0 +1,29 @@
+{
+  "__typename": "Tweet",
+  "lang": "en",
+  "text": "Animated GIF post",
+  "user": {
+    "screen_name": "gifposter",
+    "name": "GIF Poster"
+  },
+  "mediaDetails": [
+    {
+      "type": "animated_gif",
+      "video_info": {
+        "aspect_ratio": [1, 1],
+        "variants": [
+          {
+            "bitrate": 0,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/tw_vod_gif/3333333333/pu/vid/480x480/gif_high.mp4"
+          },
+          {
+            "bitrate": 0,
+            "content_type": "video/mp4",
+            "url": "https://video.twimg.com/tw_vod_gif/3333333333/pu/vid/320x320/gif_low.mp4"
+          }
+        ]
+      }
+    }
+  ]
+}
