@@ -9,7 +9,7 @@ dist/
 # Dependencies
 node_modules/
 
-# Editor files
+# Editor / IDE files
 .vscode/
 .idea/
 *.swp
@@ -19,13 +19,17 @@ node_modules/
 # Environment
 .env
 .env.local
+.env.*.local
 
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
-issues.jsonl
+# AI / Agent tooling
+.claude/
+.beads/
 
 # Test artifacts
 coverage/
 .vitest-cache/
+*.log
+
+# Misc
+*.bak
+*.tmp
