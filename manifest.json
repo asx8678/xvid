@@ -3,6 +3,7 @@
   "name": "X Video Downloader",
   "version": "2.4.0",
   "description": "Download videos from X.com and Twitter posts, with multi-media picking, batch download, Save As support, and a smarter popup.",
+  "homepage_url": "https://github.com/asx8678/xvid",
   "minimum_chrome_version": "103",
   "icons": {
     "16": "icons/icon16.png",
@@ -38,9 +39,7 @@
         "https://twitter.com/*",
         "https://mobile.twitter.com/*"
       ],
-      "js": [
-        "content.js"
-      ],
+      "js": ["content.js"],
       "world": "ISOLATED",
       "run_at": "document_idle"
     }

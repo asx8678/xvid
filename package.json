@@ -2,6 +2,7 @@
   "name": "xvid",
   "version": "2.4.0",
   "private": true,
+  "description": "X Video Downloader - Manifest V3 Chrome extension",
   "engines": {
     "node": ">=18"
   },
@@ -10,7 +11,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "capture-fixtures": "node scripts/capture-real-fixtures.mjs",
-    "manual-qa:smoke": "node tests/manual-qa/extension-smoke.mjs"
+    "manual-qa:smoke": "node tests/manual-qa/extension-smoke.mjs",
+    "lint": "echo 'ESLint not yet configured. Run: npm install -D eslint && npx eslint .'"
   },
   "devDependencies": {
     "vitest": "^1.6.0",
