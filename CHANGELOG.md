@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.2
+
+- Content script: CSS `:has()` selectors now do the sweep filtering
+  ("video tweet without a button") and the timestamped-permalink preference
+  natively; `minimum_chrome_version` raised 103 → 105 for `:has()`.
+- Inline SVG icon is built with `innerHTML` from a fixed literal instead of
+  `createElementNS` ceremony (verified x.com serves no Trusted Types CSP
+  directives; Chrome ≥130 exempts isolated worlds regardless).
+
 ## 3.0.1
 
 - Removed the test suite, fixtures, capture script, and vitest tooling —
