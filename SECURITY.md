@@ -8,7 +8,7 @@
 
 - **Dev-only dependency** — esbuild is never included in the production extension bundle.
 - **Exposure vector**: the vulnerability requires running `vitest --watch` (or `vite dev`) with `--host 0.0.0.0` on an untrusted network. Our CI uses `vitest run` (one-shot, no dev server).
-- **No user-facing impact** — the extension's runtime code (`background.js`, `content.js`, `popup.js`) is unaffected.
+- **No user-facing impact** — the extension's runtime code (`background.js`, `content.js`) is unaffected.
 
 ### Decision
 

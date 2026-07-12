@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X Video Downloader",
-  "version": "2.4.0",
-  "description": "Download videos from X.com and Twitter posts, with multi-media picking, batch download, Save As support, and a smarter popup.",
+  "version": "3.0.0",
+  "description": "Adds a download button to X.com and Twitter videos. Always downloads the highest-quality MP4.",
   "homepage_url": "https://github.com/asx8678/xvid",
   "minimum_chrome_version": "103",
   "icons": {
@@ -11,40 +11,29 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "X Video Downloader",
-    "default_popup": "popup.html",
+    "default_title": "Download video from this post",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
   },
-  "permissions": [
-    "downloads",
-    "storage"
-  ],
+  "permissions": ["downloads"],
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
-    "https://cdn.syndication.twimg.com/*",
-    "https://mobile.twitter.com/*"
+    "https://cdn.syndication.twimg.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://x.com/*",
-        "https://twitter.com/*",
-        "https://mobile.twitter.com/*"
-      ],
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
       "js": ["content.js"],
+      "css": ["content.css"],
       "world": "ISOLATED",
       "run_at": "document_idle"
     }
-  ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'"
-  }
+  ]
 }

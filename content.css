@@ -1,0 +1,47 @@
+.xvd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34.75px;
+  height: 34.75px;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: none;
+  color: rgb(113, 118, 123);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.xvd svg {
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+
+.xvd:hover,
+.xvd:focus-visible {
+  color: #1d9bf0;
+  background-color: rgba(29, 155, 240, 0.1);
+}
+
+.xvd--busy {
+  opacity: 0.55;
+}
+
+.xvd--ok,
+.xvd--ok:hover,
+.xvd--ok:focus-visible {
+  color: #00ba7c;
+  background-color: rgba(0, 186, 124, 0.12);
+}
+
+.xvd--err,
+.xvd--err:hover,
+.xvd--err:focus-visible {
+  color: #f4212e;
+  background-color: rgba(244, 33, 46, 0.12);
+}

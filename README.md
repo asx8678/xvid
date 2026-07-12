@@ -1,31 +1,55 @@
 # X Video Downloader
 
-A clean, privacy-focused **Manifest V3** Chrome/Chromium extension for downloading videos and GIFs from X (Twitter) posts.
+A local, privacy-focused Chrome/Chromium Manifest V3 extension that adds a
+download button to X/Twitter videos. Deliberately minimal: no popup, no
+settings, no idle CPU — it always downloads the highest-quality MP4 the post
+exposes.
 
-## Features
+## Use
 
-- Inline download button on posts containing videos
-- Smart popup with variant picker
-- Batch download support
-- Save As dialog support
-- Copy direct video URL
-- Minimal permissions and strong security practices
+- **Inline button** — posts with video get a download icon in the action bar.
+  Click it to download the best MP4. Alt/Option-click opens a Save As dialog.
+- **Toolbar icon** — on an open post page, clicking the extension icon
+  downloads that post's video. The icon badge flashes `?` if the page isn't a
+  post and `!` if the lookup fails.
+- Multi-video posts download every video (`_m1`, `_m2`, … filename suffixes).
+- Quote posts and replies without their own media download the quoted/parent
+  video.
 
-## Installation
+Filenames look like `@user_1234567890_1280x720.mp4`.
 
-1. Download or clone this repository
-2. Go to `chrome://extensions/` (or equivalent in Edge/Brave)
-3. Enable **Developer mode**
-4. Click **Load unpacked** and select the folder
+## Install locally
 
-## Important Notes & Limitations
+1. Open `chrome://extensions` (or the equivalent in Edge/Brave).
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select this folder.
 
-- Only works on publicly available video/GIFs exposed by X
-- Does **not** work on private accounts, deleted posts, or protected content
-- X frequently updates their UI — the inline button may occasionally break until updated
+## Development
 
-See full details in the [README](README.md) and [CHANGELOG.md](CHANGELOG.md).
+```bash
+npm install
+npm test                  # one-shot, used in CI
+npm run test:watch        # watch mode
+npm run test:coverage     # coverage report
+npm run lint              # ESLint
+npm run format:check      # Prettier
+```
 
-## Contributing
+The suite covers `background.js` and `content.js` with Vitest against a
+faithful `chrome.*` mock (`tests/setup.js`) and real syndication-endpoint
+fixtures (`tests/fixtures/`). To re-capture live fixtures with PII redaction:
 
-Pull requests and issues are welcome. Please see [CONTRIBUTING.md](CONTRIBUTING.md).
+```bash
+npm run capture-fixtures
+```
+
+Contributions are welcome — see `CONTRIBUTING.md`. Release history lives in
+`CHANGELOG.md`; the disclosure policy in `SECURITY.md`.
+
+## Notes & limitations
+
+- Only downloads video/GIF MP4 variants that X/Twitter exposes through its
+  embeddable metadata endpoint. Private, restricted, deleted, DRM-protected,
+  or non-video posts may not expose downloadable media.
+- X frequently updates their UI — the inline button may occasionally break
+  until the DOM selectors are updated.

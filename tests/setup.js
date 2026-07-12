@@ -1,23 +1,21 @@
 /**
- * Chrome Extension API mock factory for Vitest + jsdom.
+ * Chrome Extension API mock factory for Vitest.
  *
- * Provides faithful MV3 chrome.* mocks with test helpers exposed on the mock
- * objects for triggering events and inspecting calls.
+ * Provides MV3-faithful chrome.* mocks with test helpers exposed on
+ * chrome.__test for triggering events and inspecting calls.
  */
 
 /**
  * Shared MV3-compatible onMessage dispatcher.
  *
- * Faithfully models the Chrome MV3 message-passing contract:
- * - All registered listeners are always invoked (returning true does NOT
- *   stop dispatch to subsequent listeners).
- * - If a listener returns `true`, it signals an async reply; the dispatcher
- *   keeps the channel open and waits for `reply()` to be called.
+ * Models the Chrome MV3 message-passing contract:
+ * - All registered listeners are always invoked.
+ * - A listener returning `true` signals an async reply; the dispatcher keeps
+ *   the channel open and waits for `reply()`.
  * - If no listener returns `true`, the dispatcher resolves with `undefined`
- *   (or the first synchronous `reply()` if a listener called it directly).
- * - If a listener returns `true` but never calls `reply()`, the dispatcher
- *   times out after 1 second rather than hanging indefinitely.
- * - If a listener throws, the error is captured but dispatch continues.
+ *   (or the first synchronous `reply()`).
+ * - A listener that returns `true` but never replies times out after 1s.
+ * - A throwing listener rejects the dispatch unless another listener replied.
  */
 export function dispatchRuntimeMessage(listeners, msg, sender) {
   return new Promise((resolve, reject) => {
@@ -40,15 +38,13 @@ export function dispatchRuntimeMessage(listeners, msg, sender) {
 
     for (const listener of [...listeners]) {
       try {
-        const returnValue = listener(msg, sender, reply);
-        if (returnValue === true) keptAlive = true;
+        if (listener(msg, sender, reply) === true) keptAlive = true;
       } catch (err) {
         firstError ??= err;
       }
     }
 
-    if (replied) return;
-    if (keptAlive) return; // Wait for async reply or timeout
+    if (replied || keptAlive) return;
 
     clearTimeout(timeout);
     if (firstError) reject(firstError);
@@ -56,73 +52,42 @@ export function dispatchRuntimeMessage(listeners, msg, sender) {
   });
 }
 
-/**
- * Create a fresh chrome.* mock suite. Call this in beforeEach or via
- * installChromeMock() to get a clean slate.
- */
+/** Create a fresh chrome.* mock suite. */
 export function createChromeMock() {
-  const __storage = { ...DEFAULT_SETTINGS };
+  const __lastError = { message: null };
 
-  // --- chrome.storage.sync ---
-  const storageSync = {
-    async get(defaults) {
-      const merged = { ...defaults, ...__storage };
-      return merged;
-    },
-    async set(obj) {
-      Object.assign(__storage, obj);
-    },
-    async setAccessLevel() {
-      // no-op in tests
-    },
-    __storage,
-  };
-
-  // --- chrome.runtime.onMessage ---
   const __messageListeners = [];
   const onMessage = {
     addListener(fn) {
       __messageListeners.push(fn);
     },
-    removeListener(fn) {
-      const idx = __messageListeners.indexOf(fn);
-      if (idx !== -1) __messageListeners.splice(idx, 1);
-    },
   };
 
-  // --- chrome.runtime.onInstalled / onStartup ---
-  const __onInstalledListeners = [];
-  const onInstalled = {
-    addListener(fn) {
-      __onInstalledListeners.push(fn);
-    },
+  // Supports both the promise form (no callback) and the callback form used
+  // by content scripts; the callback form sets lastError on failure.
+  const sendMessage = (msg, callback) => {
+    const promise = __messageListeners.length
+      ? dispatchRuntimeMessage(__messageListeners, msg, { tab: { id: 1 } })
+      : Promise.reject(new Error('No message listeners registered'));
+
+    if (typeof callback !== 'function') return promise;
+
+    promise.then(
+      (result) => {
+        __lastError.message = null;
+        callback(result);
+      },
+      (err) => {
+        __lastError.message = err?.message || String(err);
+        callback(undefined);
+      }
+    );
+    return undefined;
   };
 
-  const __onStartupListeners = [];
-  const onStartup = {
-    addListener(fn) {
-      __onStartupListeners.push(fn);
-    },
-  };
-
-  // --- chrome.runtime.sendMessage ---
-  // Uses the shared dispatcher for faithful MV3 semantics.
-  const __lastError = { message: null };
-  const runtimeSendMessage = (msg) => {
-    if (__messageListeners.length === 0) {
-      return Promise.reject(new Error('No message listeners registered'));
-    }
-    const sender = { tab: { id: 1, url: 'https://x.com/test/status/1234567890' } };
-    return dispatchRuntimeMessage(__messageListeners, msg, sender);
-  };
-
-  // --- chrome.runtime.getURL ---
-  const getURL = (path) => `chrome-extension://xvid-id/${path}`;
-
-  // --- chrome.downloads ---
   const __downloads = [];
   let __nextDownloadId = 1;
-  const downloadsApi = {
+  const downloads = {
     async download(options) {
       const id = __nextDownloadId++;
       __downloads.push({ id, ...options });
@@ -130,120 +95,56 @@ export function createChromeMock() {
     },
   };
 
-  // --- chrome.tabs ---
-  const __mockTabs = [{ id: 1, url: 'https://x.com/testuser/status/1234567890' }];
-  const tabsApi = {
-    async query(queryInfo) {
-      return [...__mockTabs];
+  const __actionClickListeners = [];
+  const __badgeCalls = [];
+  const action = {
+    onClicked: {
+      addListener(fn) {
+        __actionClickListeners.push(fn);
+      },
     },
-    async create(opts) {
-      return { id: 99, ...opts };
+    async setBadgeText(details) {
+      __badgeCalls.push(details.text);
     },
+    async setBadgeBackgroundColor() {},
   };
 
-  // --- chrome.runtime.lastError ---
-  const lastError = Object.create(null);
-  Object.defineProperty(lastError, 'message', {
-    get() { return __lastError.message; },
-    set(v) { __lastError.message = v; },
+  const runtime = { onMessage, sendMessage };
+  // Chrome exposes lastError only while an error is pending; otherwise it is
+  // undefined (an always-present object would defeat `!chrome.runtime.lastError`).
+  Object.defineProperty(runtime, 'lastError', {
+    get() {
+      return __lastError.message ? { message: __lastError.message } : undefined;
+    },
     configurable: true,
   });
 
-  // Assemble the chrome global
-  const chrome = {
-    storage: { sync: storageSync },
-    runtime: {
-      onMessage,
-      onInstalled,
-      onStartup,
-      sendMessage: runtimeSendMessage,
-      getURL,
-      lastError,
-    },
-    downloads: downloadsApi,
-    tabs: tabsApi,
-  };
+  const chrome = { runtime, downloads, action };
 
-  // Test helpers attached to chrome
   chrome.__test = {
-    /** Overwrite storage data */
-    __setStorage(obj) {
-      Object.assign(__storage, obj);
+    __triggerMessage(msg, sender = { tab: { id: 1 } }) {
+      return dispatchRuntimeMessage(__messageListeners, msg, sender);
     },
-    /** Clear and reset storage to defaults */
-    __resetStorage() {
-      for (const key of Object.keys(__storage)) delete __storage[key];
-      Object.assign(__storage, { ...DEFAULT_SETTINGS });
+    __triggerActionClick(tab) {
+      for (const fn of __actionClickListeners) fn(tab);
     },
-    /** Get all registered onMessage listeners */
-    __getMessageListeners() {
-      return [...__messageListeners];
-    },
-    /**
-     * Manually trigger a message to all listeners, returning the reply.
-     * Simulates the MV3 async-reply contract using the shared dispatcher.
-     */
-    __triggerMessage(msg, sender) {
-      const safeSender = sender || { tab: { id: 1, url: 'https://x.com/test/status/1234567890' } };
-      return dispatchRuntimeMessage(__messageListeners, msg, safeSender);
-    },
-    /** Trigger onInstalled listeners */
-    __triggerOnInstalled() {
-      for (const fn of __onInstalledListeners) fn();
-    },
-    /** Trigger onStartup listeners */
-    __triggerOnStartup() {
-      for (const fn of __onStartupListeners) fn();
-    },
-    /** Get recorded downloads */
     __getDownloads() {
       return [...__downloads];
     },
-    /** Clear recorded downloads */
-    __clearDownloads() {
-      __downloads.length = 0;
-      __nextDownloadId = 1;
+    __getBadgeCalls() {
+      return [...__badgeCalls];
     },
-    /** Set mock tabs */
-    __setMockTabs(tabs) {
-      __mockTabs.length = 0;
-      __mockTabs.push(...tabs);
-    },
-    /** Set lastError */
-    __setLastError(msg) {
-      __lastError.message = msg;
-    },
-    /** Clear lastError */
-    __clearLastError() {
-      __lastError.message = null;
+    __setLastError(message) {
+      __lastError.message = message;
     },
   };
 
   return chrome;
 }
 
-const DEFAULT_SETTINGS = {
-  defaultQuality: 'best',
-  promptSaveAs: false,
-};
-
-/**
- * Install chrome mock as a global and return it.
- * Call in beforeEach.
- */
+/** Install a fresh chrome mock as a global and return it. Call in beforeEach. */
 export function installChromeMock() {
   const chrome = createChromeMock();
   globalThis.chrome = chrome;
   return chrome;
-}
-
-/**
- * Reset the chrome mock's internal state (clear downloads, reset storage, etc.)
- * Useful between tests without recreating the entire mock.
- */
-export function resetChromeMock(chrome) {
-  if (!chrome || !chrome.__test) return;
-  chrome.__test.__resetStorage();
-  chrome.__test.__clearDownloads();
-  chrome.__test.__clearLastError();
 }

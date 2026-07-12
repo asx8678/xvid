@@ -19,6 +19,17 @@ export default [
     },
   },
   {
+    files: ['scripts/**', 'tests/**', '*.config.*'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     ignores: ['dist/', 'node_modules/', 'coverage/'],
   },
 ];

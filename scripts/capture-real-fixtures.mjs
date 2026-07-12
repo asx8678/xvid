@@ -16,7 +16,7 @@
  *   tests/fixtures/real-syndication/analysis.md        — human-readable report
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -135,9 +135,7 @@ function redactTweet(raw) {
 
   // ── Edit control ──────────────────────────────────────────────
   if (t.edit_control?.edit_tweet_ids) {
-    t.edit_control.edit_tweet_ids = t.edit_control.edit_tweet_ids.map(
-      () => REDACTED
-    );
+    t.edit_control.edit_tweet_ids = t.edit_control.edit_tweet_ids.map(() => REDACTED);
   }
 
   // ── mediaDetails: PRESERVE media_url_https and video_info ─────
@@ -198,7 +196,7 @@ function analyzeFixture(id, fixture) {
     media: media.map((m) => ({
       type: m.type,
       has_media_url_https: !!m.media_url_https,
-      media_url_https_present: m._has_media_url_https ?? ('media_url_https' in m),
+      media_url_https_present: m._has_media_url_https ?? 'media_url_https' in m,
       has_video_info: !!m.video_info,
       duration_millis: m.video_info?.duration_millis ?? null,
       aspect_ratio: m.video_info?.aspect_ratio ?? null,
@@ -209,9 +207,9 @@ function analyzeFixture(id, fixture) {
 
 function buildReport(results) {
   const totalMedia = results.reduce((s, r) => s + r.mediaCount, 0);
-  const videoGifMedia = results.flatMap((r) => r.media).filter(
-    (m) => m.type === 'video' || m.type === 'animated_gif'
-  );
+  const videoGifMedia = results
+    .flatMap((r) => r.media)
+    .filter((m) => m.type === 'video' || m.type === 'animated_gif');
   const videoGifCount = videoGifMedia.length;
 
   const withMediaUrl = videoGifMedia.filter((m) => m.has_media_url_https).length;
@@ -219,14 +217,13 @@ function buildReport(results) {
   const withAspectRatio = videoGifMedia.filter((m) => m.aspect_ratio !== null).length;
   const withVariants = videoGifMedia.filter((m) => m.variant_count > 0).length;
 
-  const mediaUrlRate = videoGifCount > 0
-    ? ((withMediaUrl / videoGifCount) * 100).toFixed(1) : 'N/A';
-  const durationRate = videoGifCount > 0
-    ? ((withDuration / videoGifCount) * 100).toFixed(1) : 'N/A';
-  const aspectRate = videoGifCount > 0
-    ? ((withAspectRatio / videoGifCount) * 100).toFixed(1) : 'N/A';
-  const variantRate = videoGifCount > 0
-    ? ((withVariants / videoGifCount) * 100).toFixed(1) : 'N/A';
+  const mediaUrlRate =
+    videoGifCount > 0 ? ((withMediaUrl / videoGifCount) * 100).toFixed(1) : 'N/A';
+  const durationRate =
+    videoGifCount > 0 ? ((withDuration / videoGifCount) * 100).toFixed(1) : 'N/A';
+  const aspectRate =
+    videoGifCount > 0 ? ((withAspectRatio / videoGifCount) * 100).toFixed(1) : 'N/A';
+  const variantRate = videoGifCount > 0 ? ((withVariants / videoGifCount) * 100).toFixed(1) : 'N/A';
 
   return {
     captured: results.length,
@@ -257,9 +254,7 @@ function reportToMarkdown(report) {
   ];
 
   for (const [field, data] of Object.entries(report.populationRates)) {
-    lines.push(
-      `| \`${field}\` | ${data.populated} | ${data.total} | ${data.rate}% |`
-    );
+    lines.push(`| \`${field}\` | ${data.populated} | ${data.total} | ${data.rate}% |`);
   }
 
   const mr = report.populationRates.media_url_https.rate;
@@ -271,20 +266,20 @@ function reportToMarkdown(report) {
     if (mr === '100.0' && dr === '100.0') {
       lines.push(
         '> **✅ Target MET**: Both `media_url_https` and `duration_millis` ' +
-        'are populated at **100%** — exceeds the ≥95% target.'
+          'are populated at **100%** — exceeds the ≥95% target.'
       );
     } else {
       lines.push(
         `> **✅ Target MET**: ` +
-        `\`media_url_https\` at ${mr}%, ` +
-        `\`duration_millis\` at ${dr}% — both ≥95%.`
+          `\`media_url_https\` at ${mr}%, ` +
+          `\`duration_millis\` at ${dr}% — both ≥95%.`
       );
     }
   } else {
     lines.push(
       `> **❌ Target NOT MET**: ` +
-      `\`media_url_https\` at ${mr}%, ` +
-      `\`duration_millis\` at ${dr}% — need ≥95%.`
+        `\`media_url_https\` at ${mr}%, ` +
+        `\`duration_millis\` at ${dr}% — need ≥95%.`
     );
   }
 
@@ -294,12 +289,24 @@ function reportToMarkdown(report) {
 
   for (const r of report.perTweet) {
     const types = r.media.map((m) => m.type).join(', ') || 'none';
-    const hasUrl = r.media.map((m) => m.has_media_url_https ? '✅' : '❌').join(' ') || '—';
-    const dur = r.media.map((m) => m.duration_millis !== null ? `${m.duration_millis}ms` : '❌').join(', ') || '—';
+    const hasUrl = r.media.map((m) => (m.has_media_url_https ? '✅' : '❌')).join(' ') || '—';
+    const dur =
+      r.media
+        .map((m) => (m.duration_millis !== null ? `${m.duration_millis}ms` : '❌'))
+        .join(', ') || '—';
     lines.push(`| ${r.id} | ${r.mediaCount} | ${types} | ${hasUrl} | ${dur} |`);
   }
 
-  lines.push('', '## How to Re-run', '', '```bash', 'npm run capture-fixtures', '# or:', 'node scripts/capture-real-fixtures.mjs', '```');
+  lines.push(
+    '',
+    '## How to Re-run',
+    '',
+    '```bash',
+    'npm run capture-fixtures',
+    '# or:',
+    'node scripts/capture-real-fixtures.mjs',
+    '```'
+  );
 
   return lines.join('\n');
 }
@@ -327,10 +334,7 @@ async function main() {
 
       if (!dryRun) {
         mkdirSync(FIXTURE_DIR, { recursive: true });
-        writeFileSync(
-          join(FIXTURE_DIR, `${id}.json`),
-          JSON.stringify(sanitized, null, 2) + '\n'
-        );
+        writeFileSync(join(FIXTURE_DIR, `${id}.json`), JSON.stringify(sanitized, null, 2) + '\n');
       }
 
       const types = analysis.media.map((m) => m.type).join(', ');
@@ -344,14 +348,8 @@ async function main() {
   const report = buildReport(results);
 
   if (!dryRun) {
-    writeFileSync(
-      join(FIXTURE_DIR, 'analysis.json'),
-      JSON.stringify(report, null, 2) + '\n'
-    );
-    writeFileSync(
-      join(FIXTURE_DIR, 'analysis.md'),
-      reportToMarkdown(report) + '\n'
-    );
+    writeFileSync(join(FIXTURE_DIR, 'analysis.json'), JSON.stringify(report, null, 2) + '\n');
+    writeFileSync(join(FIXTURE_DIR, 'analysis.md'), reportToMarkdown(report) + '\n');
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -388,8 +386,7 @@ export { REDACTED, redactTweet, analyzeFixture, buildReport, reportToMarkdown };
 
 // ── CLI entry point (only runs when executed directly) ─────────────
 
-const isMain = process.argv[1] &&
-  fileURLToPath(import.meta.url) === process.argv[1];
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isMain) {
   main().catch((err) => {
