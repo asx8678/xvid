@@ -45,3 +45,12 @@
   color: #f4212e;
   background-color: rgba(244, 33, 46, 0.12);
 }
+
+/* --- Ad hiding (fragile — first place to check when ads reappear) ---------
+   placementTracking is X's promoted-content wrapper (verified live 2026-07).
+   Timeline: hide the whole virtualized cell. Sidebar: hide only the marker
+   itself — hiding its enclosing module would take out organic entries too. */
+div[data-testid='cellInnerDiv']:has([data-testid='placementTracking']),
+[data-testid='sidebarColumn'] [data-testid='placementTracking'] {
+  display: none !important;
+}

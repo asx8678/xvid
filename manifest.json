@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "X Video Downloader",
-  "version": "3.0.2",
-  "description": "Adds a download button to X.com and Twitter videos. Always downloads the highest-quality MP4.",
+  "version": "3.1.0",
+  "description": "Adds a download button to X.com and Twitter videos and hides promoted posts. Always downloads the highest-quality MP4.",
   "homepage_url": "https://github.com/asx8678/xvid",
   "minimum_chrome_version": "105",
   "icons": {

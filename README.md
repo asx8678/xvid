@@ -1,9 +1,9 @@
 # X Video Downloader
 
 A local, privacy-focused Chrome/Chromium Manifest V3 extension that adds a
-download button to X/Twitter videos. Deliberately minimal: no popup, no
-settings, no idle CPU — it always downloads the highest-quality MP4 the post
-exposes.
+download button to X/Twitter videos and hides promoted posts. Deliberately
+minimal: no popup, no settings, no idle CPU — it always downloads the
+highest-quality MP4 the post exposes.
 
 ## Use
 
@@ -15,6 +15,9 @@ exposes.
 - Multi-video posts download every video (`_m1`, `_m2`, … filename suffixes).
 - Quote posts and replies without their own media download the quoted/parent
   video.
+- **Ad hiding** — promoted posts in the timeline and sidebar are hidden via
+  a pure-CSS rule. If X renames its ad markers, ads reappear until the
+  selector in `content.css` is updated (no breakage otherwise).
 
 Filenames look like `@user_1234567890_1280x720.mp4`.
 

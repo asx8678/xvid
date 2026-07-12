@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.0
+
+- **Hides promoted posts (ads) on x.com** — pure CSS, no new permissions,
+  no JavaScript on the hot path. Timeline ads collapse with the whole cell;
+  sidebar promoted entries are hidden in place. Uses X's
+  `placementTracking` marker (verified against the live feed; if X renames
+  it, ads reappear until the selector in `content.css` is updated).
+
 ## 3.0.2
 
 - Content script: CSS `:has()` selectors now do the sweep filtering
