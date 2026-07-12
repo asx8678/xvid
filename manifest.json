@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Distill",
-  "version": "3.3.0",
-  "description": "Distills X.com to what matters: hides promoted posts and adds a download button that always saves the highest-quality MP4.",
+  "name": "xHelper",
+  "version": "3.3.1",
+  "description": "Your X.com helper: hides promoted posts and adds a download button that always saves the highest-quality MP4.",
   "homepage_url": "https://github.com/asx8678/xvid",
   "minimum_chrome_version": "105",
   "icons": {

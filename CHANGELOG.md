@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.1
+
+- **Renamed to xHelper**, superseding the short-lived Distill name from
+  3.3.0. (No relation to the Android malware family of the same name.)
+
 ## 3.3.0
 
 - **Renamed to Distill** (formerly "X Video Downloader" / xvid — the old

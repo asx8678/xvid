@@ -1,8 +1,8 @@
 {
-  "name": "distill",
-  "version": "3.3.0",
+  "name": "xhelper",
+  "version": "3.3.1",
   "private": true,
-  "description": "Distill - Manifest V3 Chrome extension for X.com",
+  "description": "xHelper - Manifest V3 Chrome extension for X.com",
   "engines": {
     "node": ">=18"
   },

@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for considering contributing to Distill!
+Thank you for considering contributing to xHelper!
 
 ## How to contribute
 
