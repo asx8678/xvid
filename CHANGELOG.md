@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.0
+
+- **Renamed to Distill** (formerly "X Video Downloader" / xvid — the old
+  name collided with the Xvid codec and predated the ad-hiding feature).
+  Internal identifiers (`.xvd` CSS classes, repo URL) are unchanged.
+
 ## 3.2.0
 
 - **Ad-marker canary with self-healing.** X must visibly label ads, so the

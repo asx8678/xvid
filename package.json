@@ -1,8 +1,8 @@
 {
-  "name": "xvid",
-  "version": "3.2.0",
+  "name": "distill",
+  "version": "3.3.0",
   "private": true,
-  "description": "X Video Downloader - Manifest V3 Chrome extension",
+  "description": "Distill - Manifest V3 Chrome extension for X.com",
   "engines": {
     "node": ">=18"
   },

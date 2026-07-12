@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for considering contributing to X Video Downloader!
+Thank you for considering contributing to Distill!
 
 ## How to contribute
 

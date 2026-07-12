@@ -1,9 +1,11 @@
-# X Video Downloader
+# Distill
 
-A local, privacy-focused Chrome/Chromium Manifest V3 extension that adds a
-download button to X/Twitter videos and hides promoted posts. Deliberately
-minimal: no popup, no settings, no idle CPU — it always downloads the
-highest-quality MP4 the post exposes.
+A local, privacy-focused Chrome/Chromium Manifest V3 extension that distills
+X/Twitter to what matters: it adds a download button to videos and hides
+promoted posts. Deliberately minimal: no popup, no settings, no idle CPU —
+it always downloads the highest-quality MP4 the post exposes.
+
+> Formerly "X Video Downloader" (xvid) — renamed in 3.3.0.
 
 ## Use
 
