@@ -9,8 +9,11 @@ const SEL_GROUP = '[role="group"]';
 // -----------------------------------------------------------------------------
 
 const IDLE_TITLE = 'Download video (Alt/Option-click for Save As)';
+const SWEEP_MIN_INTERVAL_MS = 200;
 const ids = new WeakMap(); // tweet ID per button (not exposed to the page)
 let rafId = 0;
+let cooldownId = 0;
+let lastSweepAt = 0;
 
 // Fixed literal, safe for innerHTML: x.com serves no trusted-types CSP
 // directives, and Chrome ≥130 exempts isolated worlds from page CSP anyway.
@@ -56,6 +59,7 @@ function inject(block) {
 // so rescanning on each batched mutation is cheap; the :has() selector leaves
 // only video tweets that don't have a button yet.
 function sweep() {
+  lastSweepAt = Date.now();
   for (const block of document.querySelectorAll(SEL_INJECTABLE)) inject(block);
   adCanary();
 }
@@ -96,8 +100,21 @@ function adCanary() {
   }
 }
 
+// X mutates the DOM continuously while scrolling, so cap sweeps at one per
+// SWEEP_MIN_INTERVAL_MS instead of one per frame. The cooldown timer keeps
+// the trailing edge: the last mutation of a burst always gets swept.
 function scheduleSweep() {
-  if (rafId) return;
+  if (rafId || cooldownId) return;
+
+  const wait = lastSweepAt + SWEEP_MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) {
+    cooldownId = setTimeout(() => {
+      cooldownId = 0;
+      scheduleSweep();
+    }, wait);
+    return;
+  }
+
   rafId = requestAnimationFrame(() => {
     rafId = 0;
     sweep();
@@ -169,6 +186,10 @@ function setObserving(active) {
     if (rafId) {
       cancelAnimationFrame(rafId);
       rafId = 0;
+    }
+    if (cooldownId) {
+      clearTimeout(cooldownId);
+      cooldownId = 0;
     }
   }
 }

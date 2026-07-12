@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.2
+
+- Sweeps are throttled to one per 200 ms during DOM-mutation bursts
+  (previously one per animation frame, ~60/s while scrolling) with a
+  trailing-edge timer so the last mutation of a burst is always swept.
+  Cuts scroll-time CPU ~90%; button appearance lags at most 200 ms.
+
 ## 3.3.1
 
 - **Renamed to xHelper**, superseding the short-lived Distill name from
