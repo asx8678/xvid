@@ -57,6 +57,43 @@ function inject(block) {
 // only video tweets that don't have a button yet.
 function sweep() {
   for (const block of document.querySelectorAll(SEL_INJECTABLE)) inject(block);
+  adCanary();
+}
+
+// --- Ad-marker canary -------------------------------------------------------
+// X must visibly label ads, so a still-visible labeled ad means the CSS
+// placementTracking rule in content.css rotted: hide the timeline cell as a
+// JS fallback (sidebar is left alone — hiding containers there over-hides
+// organic entries) and flash the toolbar badge once so the selector gets
+// refreshed. Ads show the label in place of the <time> permalink, which
+// keeps organic tweets (even ones literally containing "Ad") out.
+const AD_LABELS = new Set(['Ad', 'Promoted']);
+const CANARY_EVERY_MS = 5000;
+let nextCanaryAt = 0;
+let rotReported = false;
+
+function adCanary() {
+  if (Date.now() < nextCanaryAt) return;
+  nextCanaryAt = Date.now() + CANARY_EVERY_MS;
+
+  for (const block of document.querySelectorAll('[data-testid="tweet"]')) {
+    if (block.offsetParent === null || block.querySelector('time')) continue;
+
+    const labeled = [...block.querySelectorAll('span')].some(
+      (span) =>
+        span.childElementCount === 0 &&
+        AD_LABELS.has(span.textContent.trim()) &&
+        !span.closest('[data-testid="tweetText"]')
+    );
+    if (!labeled) continue;
+
+    const cell = block.closest('div[data-testid="cellInnerDiv"]');
+    if (cell) cell.style.display = 'none';
+    if (!rotReported) {
+      rotReported = true;
+      chrome.runtime.sendMessage({ action: 'adMarkerRot' }, () => chrome.runtime.lastError);
+    }
+  }
 }
 
 function scheduleSweep() {

@@ -12,6 +12,12 @@ const LOOKUP_ERRORS = {
 void chrome.action.setBadgeBackgroundColor({ color: '#f4212e' });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.action === 'adMarkerRot') {
+    // Content-script canary: ads slipped past the CSS rule — the marker in
+    // content.css needs refreshing.
+    flashBadge('AD');
+    return false;
+  }
   if (msg?.action !== 'download') return false;
 
   const tweetId = String(msg.id ?? '');

@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.2.0
+
+- **Ad-marker canary with self-healing.** X must visibly label ads, so the
+  content script now uses the "Ad"/"Promoted" label as an independent check
+  (throttled to once per 5s, riding the existing sweep — no new timers or
+  permissions). If a labeled ad is still visible, the structural
+  `placementTracking` marker has rotted: the timeline cell is hidden via JS
+  as a fallback and the toolbar badge flashes "AD" once per page load so
+  the CSS selector gets refreshed. Organic tweets are excluded because ads
+  render the label in place of the `<time>` permalink.
+
 ## 3.1.0
 
 - **Hides promoted posts (ads) on x.com** — pure CSS, no new permissions,

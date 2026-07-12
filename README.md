@@ -16,8 +16,10 @@ highest-quality MP4 the post exposes.
 - Quote posts and replies without their own media download the quoted/parent
   video.
 - **Ad hiding** — promoted posts in the timeline and sidebar are hidden via
-  a pure-CSS rule. If X renames its ad markers, ads reappear until the
-  selector in `content.css` is updated (no breakage otherwise).
+  a pure-CSS rule. A built-in canary watches for X renaming its ad marker:
+  labeled ads that slip past the CSS rule are hidden by a JS fallback and
+  the toolbar badge flashes "AD" — that's the signal to refresh the
+  selector in `content.css`.
 
 Filenames look like `@user_1234567890_1280x720.mp4`.
 
