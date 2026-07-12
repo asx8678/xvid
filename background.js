@@ -11,6 +11,27 @@ const LOOKUP_ERRORS = {
 
 void chrome.action.setBadgeBackgroundColor({ color: '#f4212e' });
 
+// Grey out the toolbar icon everywhere except x.com. The browser evaluates
+// these declarative rules natively — no extension code runs on other sites.
+chrome.runtime.onInstalled.addListener(() => {
+  void chrome.action.disable();
+  chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
+    chrome.declarativeContent.onPageChanged.addRules([
+      {
+        conditions: [
+          new chrome.declarativeContent.PageStateMatcher({
+            pageUrl: { hostEquals: 'x.com', schemes: ['https'] },
+          }),
+          new chrome.declarativeContent.PageStateMatcher({
+            pageUrl: { hostSuffix: '.x.com', schemes: ['https'] },
+          }),
+        ],
+        actions: [new chrome.declarativeContent.ShowAction()],
+      },
+    ]);
+  });
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.action === 'adMarkerRot') {
     // Content-script canary: ads slipped past the CSS rule — the marker in
@@ -43,7 +64,7 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 function tweetIdFromUrl(url) {
-  if (typeof url !== 'string' || !/^https:\/\/(?:mobile\.)?(?:x|twitter)\.com\//i.test(url)) {
+  if (typeof url !== 'string' || !/^https:\/\/(?:[\w-]+\.)?x\.com\//i.test(url)) {
     return null;
   }
   return url.match(/\/status(?:es)?\/(\d{5,25})(?:[/?#]|$)/)?.[1] ?? null;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "xHelper",
-  "version": "3.3.2",
+  "version": "3.4.0",
   "description": "Your X.com helper: hides promoted posts and adds a download button that always saves the highest-quality MP4.",
   "homepage_url": "https://github.com/asx8678/xvid",
   "minimum_chrome_version": "105",
@@ -18,18 +18,14 @@
       "128": "icons/icon128.png"
     }
   },
-  "permissions": ["downloads"],
-  "host_permissions": [
-    "https://x.com/*",
-    "https://twitter.com/*",
-    "https://cdn.syndication.twimg.com/*"
-  ],
+  "permissions": ["downloads", "declarativeContent"],
+  "host_permissions": ["https://x.com/*", "https://cdn.syndication.twimg.com/*"],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "matches": ["https://x.com/*"],
       "js": ["content.js"],
       "css": ["content.css"],
       "world": "ISOLATED",

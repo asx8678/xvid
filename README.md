@@ -1,9 +1,10 @@
 # xHelper
 
 A local, privacy-focused Chrome/Chromium Manifest V3 extension that helps
-you use X/Twitter on your terms: it adds a download button to videos and
-hides promoted posts. Deliberately minimal: no popup, no settings, no idle
-CPU — it always downloads the highest-quality MP4 the post exposes.
+you use X on your terms: it adds a download button to videos and hides
+promoted posts. Deliberately minimal: no popup, no settings, no idle CPU —
+it always downloads the highest-quality MP4 the post exposes, and it is
+active on x.com only (the toolbar icon stays greyed out everywhere else).
 
 > Formerly "X Video Downloader" (xvid); briefly "Distill" — renamed in
 > 3.3.1. Not related to the similarly named Android malware family.

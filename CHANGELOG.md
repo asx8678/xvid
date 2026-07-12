@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.4.0
+
+- **Strictly x.com only.** Dropped `twitter.com` from the content-script
+  matches and host permissions (it redirects to x.com). The toolbar icon
+  is now greyed out and unclickable everywhere except x.com, via
+  `declarativeContent` rules the browser evaluates natively — no extension
+  code runs on non-X sites, and clicking the icon elsewhere no longer even
+  wakes the service worker.
+
 ## 3.3.2
 
 - Sweeps are throttled to one per 200 ms during DOM-mutation bursts

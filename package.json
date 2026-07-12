@@ -1,6 +1,6 @@
 {
   "name": "xhelper",
-  "version": "3.3.2",
+  "version": "3.4.0",
   "private": true,
   "description": "xHelper - Manifest V3 Chrome extension for X.com",
   "engines": {
