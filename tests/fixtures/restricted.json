@@ -1,8 +1,0 @@
-{
-  "__typename": "TweetTombstone",
-  "tombstone": {
-    "text": {
-      "text": "This post is unavailable."
-    }
-  }
-}

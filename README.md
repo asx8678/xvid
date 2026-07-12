@@ -26,25 +26,21 @@ Filenames look like `@user_1234567890_1280x720.mp4`.
 
 ## Development
 
+The extension is three files (`background.js`, `content.js`, `content.css`)
+plus the manifest — no build step, no runtime dependencies. Dev tooling is
+lint/format only:
+
 ```bash
 npm install
-npm test                  # one-shot, used in CI
-npm run test:watch        # watch mode
-npm run test:coverage     # coverage report
-npm run lint              # ESLint
-npm run format:check      # Prettier
+npm run lint
+npm run format:check
 ```
 
-The suite covers `background.js` and `content.js` with Vitest against a
-faithful `chrome.*` mock (`tests/setup.js`) and real syndication-endpoint
-fixtures (`tests/fixtures/`). To re-capture live fixtures with PII redaction:
-
-```bash
-npm run capture-fixtures
-```
+To verify a change, reload the unpacked extension and download from a video
+post, a multi-video post, and a quote of a video post.
 
 Contributions are welcome — see `CONTRIBUTING.md`. Release history lives in
-`CHANGELOG.md`; the disclosure policy in `SECURITY.md`.
+`CHANGELOG.md`.
 
 ## Notes & limitations
 

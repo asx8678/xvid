@@ -2,6 +2,13 @@ const VIDEO_TYPES = new Set(['video', 'animated_gif']);
 const REQUEST_TIMEOUT_MS = 12_000;
 const TWEET_ID_RE = /^\d{5,25}$/;
 
+const LOOKUP_ERRORS = {
+  401: 'This post is unavailable or restricted.',
+  403: 'This post is unavailable or restricted.',
+  404: 'That post could not be found.',
+  429: 'Rate limited by X/Twitter. Wait a moment and try again.',
+};
+
 void chrome.action.setBadgeBackgroundColor({ color: '#f4212e' });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
@@ -14,7 +21,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 
   task
     .then((result) => reply(result))
-    .catch((err) => reply({ ok: false, err: getErrorMessage(err) }));
+    .catch((err) => reply({ ok: false, err: err?.message || 'Unknown error' }));
   return true;
 });
 
@@ -56,26 +63,21 @@ async function downloadTweetMedia(tweetId, saveAs) {
 }
 
 async function fetchTweetMetadata(tweetId) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   let response;
   try {
     response = await fetch(
       `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&token=${Date.now()}`,
-      { signal: controller.signal, cache: 'no-store' }
+      { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), cache: 'no-store' }
     );
   } catch (err) {
-    throw err?.name === 'AbortError'
+    throw err?.name === 'TimeoutError' || err?.name === 'AbortError'
       ? new Error('Timed out while contacting X/Twitter. Try again.')
       : err;
-  } finally {
-    clearTimeout(timer);
   }
 
   if (!response.ok) {
     await response.body?.cancel();
-    throw new Error(lookupErrorMessage(response.status));
+    throw new Error(LOOKUP_ERRORS[response.status] || `Post lookup failed (${response.status}).`);
   }
 
   let data;
@@ -121,13 +123,6 @@ async function fetchTweetMetadata(tweetId) {
   };
 }
 
-function lookupErrorMessage(status) {
-  if (status === 404) return 'That post could not be found.';
-  if (status === 401 || status === 403) return 'This post is unavailable or restricted.';
-  if (status === 429) return 'Rate limited by X/Twitter. Wait a moment and try again.';
-  return `Post lookup failed (${status}).`;
-}
-
 function videoMediaDetails(node) {
   const details = Array.isArray(node?.mediaDetails)
     ? node.mediaDetails
@@ -154,7 +149,8 @@ function bestMp4Variant(media) {
     // The API sometimes serves bitrates as strings; Number() coerces both.
     const bitrate = Number(variant.bitrate) > 0 ? Number(variant.bitrate) : 0;
     const resolution = (parsed.pathname.match(/\/(\d+x\d+)\//) || [])[1] || '';
-    const area = resolutionArea(resolution);
+    const [w, h] = resolution.split('x');
+    const area = (Number(w) || 0) * (Number(h) || 0);
 
     if (!best || bitrate > best.bitrate || (bitrate === best.bitrate && area > best.area)) {
       best = { url: variant.url, bitrate, resolution, area };
@@ -162,11 +158,6 @@ function bestMp4Variant(media) {
   }
 
   return best;
-}
-
-function resolutionArea(resolution) {
-  const match = /^(\d+)x(\d+)$/.exec(resolution);
-  return match ? Number(match[1]) * Number(match[2]) : 0;
 }
 
 function buildFilename(metadata, item, index) {
@@ -179,22 +170,4 @@ function buildFilename(metadata, item, index) {
 function flashBadge(text) {
   void chrome.action.setBadgeText({ text });
   setTimeout(() => void chrome.action.setBadgeText({ text: '' }), 3000);
-}
-
-function getErrorMessage(err) {
-  if (err instanceof Error && err.message) return err.message;
-  return typeof err === 'string' && err ? err : 'Unknown error';
-}
-
-if (typeof globalThis.__XVID_TEST__ !== 'undefined') {
-  globalThis.__XVID_TEST__ = Object.freeze({
-    tweetIdFromUrl,
-    downloadTweetMedia,
-    fetchTweetMetadata,
-    videoMediaDetails,
-    bestMp4Variant,
-    resolutionArea,
-    buildFilename,
-    getErrorMessage,
-  });
 }

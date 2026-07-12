@@ -73,12 +73,11 @@ function sweep() {
 }
 
 function scheduleSweep() {
-  if (!rafId) rafId = requestAnimationFrame(runSweep);
-}
-
-function runSweep() {
-  rafId = 0;
-  sweep();
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    rafId = 0;
+    sweep();
+  });
 }
 
 function setResult(btn, ok, title) {
@@ -97,8 +96,7 @@ document.addEventListener(
   (event) => {
     if (!event.isTrusted) return;
 
-    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
-    const btn = target?.closest?.('.xvd');
+    const btn = event.target instanceof Element ? event.target.closest('.xvd') : null;
     if (!btn || btn.classList.contains('xvd--busy')) return;
 
     event.preventDefault();

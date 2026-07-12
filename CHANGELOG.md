@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.1
+
+- Removed the test suite, fixtures, capture script, and vitest tooling —
+  the extension is verified manually; CI now runs lint + format only.
+- Removed the obsolete `SECURITY.md` advisory (it covered the removed
+  vitest/esbuild dependency chain).
+- Simplified the request timeout to native `AbortSignal.timeout()`
+  (Chrome 103+), dropped the test-only export block and single-use helpers.
+
 ## 3.0.0
 
 Minimal rewrite: the extension is now just the inline download button (plus
