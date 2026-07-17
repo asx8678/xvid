@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.4.1
+
+- **Save As no longer false-fails.** `chrome.downloads.download` blocks on
+  the Save As dialog, so Alt/Option-click downloads no longer get the 15 s
+  "Extension did not respond" deadline — the user sets the pace. A reply
+  arriving after a timeout was already reported no longer flips the button
+  to a stale green.
+- Badge flashes (`?` / `!` / `AD`) are scoped to the tab that triggered
+  them instead of appearing on every window's toolbar icon.
+- Offline/DNS lookup failures now read "Could not reach X/Twitter. Check
+  your connection." instead of the raw "Failed to fetch".
+- The tweet ID returned by the syndication API is validated before being
+  used in the download filename (defense in depth — it was always digits
+  in practice).
+- Fallback media source order flipped to quoted tweet before reply parent:
+  the quoted video is the one visibly embedded in the post.
+- Tooling: eslint lints the extension files as classic scripts
+  (`sourceType: 'script'`), matching how Chrome loads them.
+
 ## 3.4.0
 
 - **Strictly x.com only.** Dropped `twitter.com` from the content-script

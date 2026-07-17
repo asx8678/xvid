@@ -32,11 +32,11 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.action === 'adMarkerRot') {
     // Content-script canary: ads slipped past the CSS rule — the marker in
     // content.css needs refreshing.
-    flashBadge('AD');
+    flashBadge('AD', sender.tab?.id);
     return false;
   }
   if (msg?.action !== 'download') return false;
@@ -57,10 +57,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 chrome.action.onClicked.addListener((tab) => {
   const tweetId = tweetIdFromUrl(tab?.url);
   if (!tweetId) {
-    flashBadge('?');
+    flashBadge('?', tab?.id);
     return;
   }
-  downloadTweetMedia(tweetId, false).catch(() => flashBadge('!'));
+  downloadTweetMedia(tweetId, false).catch(() => flashBadge('!', tab?.id));
 });
 
 function tweetIdFromUrl(url) {
@@ -97,9 +97,11 @@ async function fetchTweetMetadata(tweetId) {
       { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), cache: 'no-store' }
     );
   } catch (err) {
+    // Everything fetch rejects with here is network-level (timeout, offline,
+    // DNS) — none of the raw messages ("Failed to fetch") belong in the UI.
     throw err?.name === 'TimeoutError' || err?.name === 'AbortError'
       ? new Error('Timed out while contacting X/Twitter. Try again.')
-      : err;
+      : new Error('Could not reach X/Twitter. Check your connection.');
   }
 
   if (!response.ok) {
@@ -114,12 +116,13 @@ async function fetchTweetMetadata(tweetId) {
     throw new Error('X/Twitter returned invalid JSON for that post.');
   }
 
-  // Prefer top-level media; fall back to the parent or quoted tweet so a
-  // button on a media-less quote/reply still downloads the referenced video.
+  // Prefer top-level media; fall back to the quoted tweet, then the reply
+  // parent, so a button on a media-less quote/reply still downloads the
+  // referenced video. Quoted wins: it's the post visibly embedded in the cell.
   let source = data;
   let rawMedia = videoMediaDetails(data);
   if (!rawMedia.length) {
-    for (const candidate of [data?.parent, data?.quoted_status]) {
+    for (const candidate of [data?.quoted_status, data?.parent]) {
       if (!candidate || typeof candidate !== 'object') continue;
       const fallbackMedia = videoMediaDetails(candidate);
       if (fallbackMedia.length) {
@@ -140,8 +143,11 @@ async function fetchTweetMetadata(tweetId) {
   }
 
   const screenName = source?.user?.screen_name;
+  // The API's ID lands in the download filename, so trust it only when it
+  // looks like a tweet ID; otherwise keep the already-validated request ID.
+  const sourceId = String(source?.id_str || source?.id || '');
   return {
-    tweetId: String(source?.id_str || source?.id || tweetId),
+    tweetId: TWEET_ID_RE.test(sourceId) ? sourceId : tweetId,
     // Screen names are \w-only, so they are filesystem-safe as-is; the
     // length cap is filename hygiene, generous vs. X's 15-char limit.
     screenName:
@@ -194,7 +200,9 @@ function buildFilename(metadata, item, index) {
   return `${parts.join('_')}.mp4`;
 }
 
-function flashBadge(text) {
-  void chrome.action.setBadgeText({ text });
-  setTimeout(() => void chrome.action.setBadgeText({ text: '' }), 3000);
+// tabId scopes the badge to the originating tab (omitting it would flash
+// every window); the catch covers the tab closing before the reset fires.
+function flashBadge(text, tabId) {
+  chrome.action.setBadgeText({ text, tabId }).catch(() => {});
+  setTimeout(() => chrome.action.setBadgeText({ text: '', tabId }).catch(() => {}), 3000);
 }

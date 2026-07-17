@@ -150,14 +150,18 @@ document.addEventListener(
     btn.classList.remove('xvd--ok', 'xvd--err');
     btn.classList.add('xvd--busy');
 
-    const timeout = setTimeout(() => {
-      if (btn.classList.contains('xvd--busy')) setResult(btn, false, 'Extension did not respond');
-    }, 15000);
-
+    // Save As blocks the background response for as long as the user keeps
+    // the dialog open, so only plain downloads get a response deadline.
     const saveAs = event.altKey;
+    const timeout = saveAs
+      ? 0
+      : setTimeout(() => setResult(btn, false, 'Extension did not respond'), 15000);
+
     chrome.runtime.sendMessage({ action: 'download', id, saveAs }, (response) => {
       clearTimeout(timeout);
-      if (!btn.isConnected) return;
+      // Not busy means the timeout already reported failure — a late reply
+      // must not flip the button to a stale result.
+      if (!btn.isConnected || !btn.classList.contains('xvd--busy')) return;
       const ok = !chrome.runtime.lastError && response?.ok;
       setResult(
         btn,

@@ -54,18 +54,36 @@ bd close <id>         # Complete work
 
 ## Build & Test
 
-_Add your build and test commands here_
+There is no build step — the repo root loads directly as an unpacked
+extension (`chrome://extensions` → Developer mode → Load unpacked). There is
+no test suite (removed in 3.0.1); verify changes manually on x.com.
 
 ```bash
-# Example:
-# npm install
-# npm test
+npm install          # dev deps only: eslint + prettier
+npm run lint         # eslint .
+npm run format:check # prettier --check .
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Manifest V3 Chrome extension for x.com ("xHelper"), no runtime dependencies:
+
+- `manifest.json` — MV3 manifest; minimal permissions (`downloads`,
+  `declarativeContent`, x.com + cdn.syndication.twimg.com hosts).
+- `content.js` — runs in the ISOLATED world on x.com. Injects a download
+  button into video tweets (throttled MutationObserver sweeps) and runs the
+  ad-marker canary that backs up the CSS ad hiding.
+- `content.css` — button styling plus the pure-CSS promoted-post hiding
+  (X's `placementTracking` marker; first place to check when ads reappear).
+- `background.js` — service worker. Resolves tweets via the syndication
+  API, picks the best MP4 variant, and downloads via `chrome.downloads`.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Every release bumps the version in `manifest.json` and `package.json` and
+  adds a `CHANGELOG.md` entry.
+- Commit style: `type: vX.Y.Z — summary (bd-issue-id)`.
+- No runtime dependencies and no new permissions without strong
+  justification; the minimal permission set is a feature.
+- X.com DOM selectors are fragile by nature — they live at the top of
+  `content.js` behind named constants, with comments explaining each.
