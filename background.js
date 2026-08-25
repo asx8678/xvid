@@ -72,21 +72,18 @@ function tweetIdFromUrl(url) {
 
 async function downloadTweetMedia(tweetId, saveAs) {
   const metadata = await fetchTweetMetadata(tweetId);
-  const downloads = [];
 
   // Sequential keeps multi-media Save As dialogs usable.
   for (const [index, item] of metadata.mediaItems.entries()) {
-    const filename = buildFilename(metadata, item, index);
-    const downloadId = await chrome.downloads.download({
+    await chrome.downloads.download({
       url: item.url,
-      filename,
+      filename: buildFilename(metadata, item, index),
       conflictAction: 'uniquify',
       saveAs,
     });
-    downloads.push({ filename, downloadId });
   }
 
-  return { ok: true, tweetId: metadata.tweetId, count: downloads.length, downloads };
+  return { ok: true };
 }
 
 async function fetchTweetMetadata(tweetId) {

@@ -2,29 +2,24 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
+  {
+    ignores: ['dist/', 'node_modules/', 'coverage/', '.pi/'],
+  },
   js.configs.recommended,
   {
+    files: ['background.js', 'content.js'],
     languageOptions: {
       globals: {
         ...globals.browser,
         chrome: 'readonly',
-        browser: 'readonly',
       },
       ecmaVersion: 2022,
-      // The extension files are classic scripts (no "type": "module" in the
-      // manifest), so import/export in them must be a lint error.
+      // Chrome loads these as classic scripts; import/export must stay invalid.
       sourceType: 'script',
     },
     rules: {
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-console': 'warn',
     },
-  },
-  {
-    files: ['eslint.config.js'],
-    languageOptions: { sourceType: 'module' },
-  },
-  {
-    ignores: ['dist/', 'node_modules/', 'coverage/'],
   },
 ];

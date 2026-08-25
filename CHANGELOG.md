@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.4.2
+
+- Content-script sweep throttling now uses one timer instead of separate
+  animation-frame and cooldown state, preserving the 200 ms cap with less code.
+- A stale feedback timer can no longer clear the result of a newer download.
+- Background download replies no longer retain or return unused filenames and
+  Chrome download IDs.
+- Tooling: the ESLint config is explicitly ESM, local `.pi` state is ignored,
+  package-lock metadata is synchronized, and vulnerable transitive dev packages
+  are patched.
+
 ## 3.4.1
 
 - **Save As no longer false-fails.** `chrome.downloads.download` blocks on

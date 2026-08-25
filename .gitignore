@@ -24,6 +24,7 @@ node_modules/
 # AI / Agent tooling
 .claude/
 .beads/
+.pi/
 
 # Test artifacts
 coverage/

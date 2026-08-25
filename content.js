@@ -11,8 +11,8 @@ const SEL_GROUP = '[role="group"]';
 const IDLE_TITLE = 'Download video (Alt/Option-click for Save As)';
 const SWEEP_MIN_INTERVAL_MS = 200;
 const ids = new WeakMap(); // tweet ID per button (not exposed to the page)
-let rafId = 0;
-let cooldownId = 0;
+const resultTimers = new WeakMap();
+let sweepTimer = 0;
 let lastSweepAt = 0;
 
 // Fixed literal, safe for innerHTML: x.com serves no trusted-types CSP
@@ -100,36 +100,37 @@ function adCanary() {
   }
 }
 
-// X mutates the DOM continuously while scrolling, so cap sweeps at one per
-// SWEEP_MIN_INTERVAL_MS instead of one per frame. The cooldown timer keeps
-// the trailing edge: the last mutation of a burst always gets swept.
+// X mutates the DOM continuously while scrolling. One timer coalesces each
+// burst while keeping sweeps at least SWEEP_MIN_INTERVAL_MS apart.
 function scheduleSweep() {
-  if (rafId || cooldownId) return;
+  if (sweepTimer) return;
 
-  const wait = lastSweepAt + SWEEP_MIN_INTERVAL_MS - Date.now();
-  if (wait > 0) {
-    cooldownId = setTimeout(() => {
-      cooldownId = 0;
-      scheduleSweep();
-    }, wait);
-    return;
-  }
-
-  rafId = requestAnimationFrame(() => {
-    rafId = 0;
+  const wait = Math.max(0, lastSweepAt + SWEEP_MIN_INTERVAL_MS - Date.now());
+  sweepTimer = setTimeout(() => {
+    sweepTimer = 0;
     sweep();
-  });
+  }, wait);
 }
 
 function setResult(btn, ok, title) {
+  clearTimeout(resultTimers.get(btn));
   btn.classList.remove('xvd--busy');
   btn.classList.add(ok ? 'xvd--ok' : 'xvd--err');
   btn.title = title;
-  setTimeout(() => {
-    if (!btn.isConnected || btn.classList.contains('xvd--busy')) return;
+
+  const resetId = setTimeout(() => {
+    if (
+      resultTimers.get(btn) !== resetId ||
+      !btn.isConnected ||
+      btn.classList.contains('xvd--busy')
+    ) {
+      return;
+    }
+    resultTimers.delete(btn);
     btn.classList.remove('xvd--ok', 'xvd--err');
     btn.title = IDLE_TITLE;
   }, 3000);
+  resultTimers.set(btn, resetId);
 }
 
 document.addEventListener(
@@ -187,14 +188,8 @@ function setObserving(active) {
     sweep();
   } else {
     observer.disconnect();
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
-    }
-    if (cooldownId) {
-      clearTimeout(cooldownId);
-      cooldownId = 0;
-    }
+    clearTimeout(sweepTimer);
+    sweepTimer = 0;
   }
 }
 
