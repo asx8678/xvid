@@ -70,9 +70,9 @@ Manifest V3 Chrome extension for x.com ("xHelper"), no runtime dependencies:
 
 - `manifest.json` — MV3 manifest; minimal permissions (`downloads`,
   `declarativeContent`, x.com + cdn.syndication.twimg.com hosts).
-- `content.js` — runs in the ISOLATED world on x.com. Injects a download
-  button into video tweets (throttled MutationObserver sweeps) and runs the
-  ad-marker canary that backs up the CSS ad hiding.
+- `content.js` — runs in the ISOLATED world on x.com. A throttled
+  MutationObserver queues only affected tweet blocks for download-button
+  injection; an infrequent ad-marker canary backs up the CSS ad hiding.
 - `content.css` — button styling plus the pure-CSS promoted-post hiding
   (X's `placementTracking` marker; first place to check when ads reappear).
 - `background.js` — service worker. Resolves tweets via the syndication

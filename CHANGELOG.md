@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.5.0
+
+- **Lower browser work on active X timelines.** Mutation bursts now inspect
+  only the affected tweet blocks instead of running a full-document relational
+  selector up to five times per second.
+- Candidate tweets are deduplicated, nested quote and outer posts are both
+  revisited, and the extension ignores the DOM mutation from its own button.
+- Initial load and tab resume still perform one complete discovery pass; hidden
+  tabs disconnect the observer and discard all queued work. The existing
+  five-second ad-marker canary remains the only infrequent global JavaScript scan.
+
 ## 3.4.2
 
 - Content-script sweep throttling now uses one timer instead of separate

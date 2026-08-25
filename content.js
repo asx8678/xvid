@@ -2,7 +2,7 @@
 // expose chrome.runtime to the host page. Button styling lives in content.css.
 
 // --- X.com DOM selectors (fragile — first place to check when things break) --
-const SEL_INJECTABLE = '[data-testid="tweet"]:has(video):not(:has(.xvd))';
+const SEL_TWEET = '[data-testid="tweet"]';
 const SEL_TWEET_LINK = 'a[href*="/status/"], a[href*="/statuses/"]';
 const SEL_TIMED_LINK = 'a[href*="/status/"]:has(time), a[href*="/statuses/"]:has(time)';
 const SEL_GROUP = '[role="group"]';
@@ -12,6 +12,7 @@ const IDLE_TITLE = 'Download video (Alt/Option-click for Save As)';
 const SWEEP_MIN_INTERVAL_MS = 200;
 const ids = new WeakMap(); // tweet ID per button (not exposed to the page)
 const resultTimers = new WeakMap();
+const pendingTweets = new Set();
 let sweepTimer = 0;
 let lastSweepAt = 0;
 
@@ -55,12 +56,33 @@ function inject(block) {
   bar.appendChild(btn);
 }
 
-// X virtualizes its timeline (only ~a couple dozen tweets stay in the DOM),
-// so rescanning on each batched mutation is cheap; the :has() selector leaves
-// only video tweets that don't have a button yet.
+// Queue every tweet enclosing a mutation. The outer post must be revisited when
+// a nested quote gains video, because both posts matched the old global scan.
+function queueTweet(node) {
+  if (!(node instanceof Element)) return;
+  for (
+    let block = node.closest(SEL_TWEET);
+    block;
+    block = block.parentElement?.closest(SEL_TWEET)
+  ) {
+    pendingTweets.add(block);
+  }
+}
+
+function queueAddedTweets(node) {
+  if (!(node instanceof Element)) return;
+  queueTweet(node);
+  for (const block of node.querySelectorAll(SEL_TWEET)) pendingTweets.add(block);
+}
+
 function sweep() {
   lastSweepAt = Date.now();
-  for (const block of document.querySelectorAll(SEL_INJECTABLE)) inject(block);
+  for (const block of pendingTweets) {
+    if (block.isConnected && block.querySelector('video') && !block.querySelector('.xvd')) {
+      inject(block);
+    }
+  }
+  pendingTweets.clear();
   adCanary();
 }
 
@@ -80,7 +102,7 @@ function adCanary() {
   if (Date.now() < nextCanaryAt) return;
   nextCanaryAt = Date.now() + CANARY_EVERY_MS;
 
-  for (const block of document.querySelectorAll('[data-testid="tweet"]')) {
+  for (const block of document.querySelectorAll(SEL_TWEET)) {
     if (block.offsetParent === null || block.querySelector('time')) continue;
 
     const labeled = [...block.querySelectorAll('span')].some(
@@ -98,6 +120,25 @@ function adCanary() {
       chrome.runtime.sendMessage({ action: 'adMarkerRot' }, () => chrome.runtime.lastError);
     }
   }
+}
+
+function collectMutations(records) {
+  for (const record of records) {
+    // Appending our own button must not schedule another sweep.
+    if (
+      record.addedNodes.length === 1 &&
+      record.addedNodes[0] instanceof Element &&
+      record.addedNodes[0].classList.contains('xvd')
+    ) {
+      continue;
+    }
+
+    queueTweet(record.target);
+    for (const node of record.addedNodes) queueAddedTweets(node);
+  }
+
+  // Irrelevant page churn does no scheduled work except the 5 s ad canary.
+  if (pendingTweets.size || Date.now() >= nextCanaryAt) scheduleSweep();
 }
 
 // X mutates the DOM continuously while scrolling. One timer coalesces each
@@ -178,16 +219,18 @@ document.addEventListener(
   true
 );
 
-// Observe only while the tab is visible: hidden tabs do zero work, and the
-// re-sweep on return catches anything that changed while hidden.
-const observer = new MutationObserver(scheduleSweep);
+// Observe only while the tab is visible: hidden tabs do zero work, and one
+// full scan on return catches anything that changed while hidden.
+const observer = new MutationObserver(collectMutations);
 
 function setObserving(active) {
   if (active) {
     observer.observe(document.documentElement, { childList: true, subtree: true });
+    queueAddedTweets(document.documentElement);
     sweep();
   } else {
     observer.disconnect();
+    pendingTweets.clear();
     clearTimeout(sweepTimer);
     sweepTimer = 0;
   }
