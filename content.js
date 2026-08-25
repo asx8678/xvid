@@ -75,10 +75,17 @@ function queueAddedTweets(node) {
   for (const block of node.querySelectorAll(SEL_TWEET)) pendingTweets.add(block);
 }
 
+function hasOwnButton(block) {
+  for (const button of block.querySelectorAll('.xvd')) {
+    if (button.closest(SEL_TWEET) === block) return true;
+  }
+  return false;
+}
+
 function sweep() {
   lastSweepAt = Date.now();
   for (const block of pendingTweets) {
-    if (block.isConnected && block.querySelector('video') && !block.querySelector('.xvd')) {
+    if (block.isConnected && block.querySelector('video') && !hasOwnButton(block)) {
       inject(block);
     }
   }

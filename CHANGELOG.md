@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.5.1
+
+- Download buttons on a newly rendered quoted video and its outer post are now
+  tracked independently, so either mutation-processing order injects both
+  buttons without duplicates.
+
 ## 3.5.0
 
 - **Lower browser work on active X timelines.** Mutation bursts now inspect
