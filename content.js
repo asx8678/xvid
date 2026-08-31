@@ -59,25 +59,26 @@ function inject(block) {
 // Queue every tweet enclosing a mutation. The outer post must be revisited when
 // a nested quote gains video, because both posts matched the old global scan.
 function queueTweet(node) {
-  if (!(node instanceof Element)) return;
-  for (
-    let block = node.closest(SEL_TWEET);
-    block;
-    block = block.parentElement?.closest(SEL_TWEET)
-  ) {
+  if (!(node instanceof Element)) return false;
+  let block = node.closest(SEL_TWEET);
+  if (!block) return false;
+  do {
     pendingTweets.add(block);
-  }
+    block = block.parentElement?.closest(SEL_TWEET);
+  } while (block);
+  return true;
 }
 
 function queueAddedTweets(node) {
   if (!(node instanceof Element)) return;
-  queueTweet(node);
+  if (node.dataset.testid === 'tweet') pendingTweets.add(node);
+  if (!node.firstElementChild || !node.querySelector(SEL_TWEET)) return;
   for (const block of node.querySelectorAll(SEL_TWEET)) pendingTweets.add(block);
 }
 
 function hasOwnButton(block) {
-  for (const button of block.querySelectorAll('.xvd')) {
-    if (button.closest(SEL_TWEET) === block) return true;
+  for (const button of block.getElementsByClassName('xvd')) {
+    if (ids.has(button) && button.closest(SEL_TWEET) === block) return true;
   }
   return false;
 }
@@ -130,19 +131,25 @@ function adCanary() {
 }
 
 function collectMutations(records) {
+  const targets = new Map();
+  const insideTargets = [];
   for (const record of records) {
     // Appending our own button must not schedule another sweep.
-    if (
-      record.addedNodes.length === 1 &&
-      record.addedNodes[0] instanceof Element &&
-      record.addedNodes[0].classList.contains('xvd')
-    ) {
-      continue;
-    }
+    if (record.addedNodes.length === 1 && ids.has(record.addedNodes[0])) continue;
 
-    queueTweet(record.target);
-    for (const node of record.addedNodes) queueAddedTweets(node);
+    let insideTweet = targets.get(record.target);
+    if (insideTweet === undefined) {
+      insideTweet = queueTweet(record.target);
+      targets.set(record.target, insideTweet);
+      if (insideTweet) insideTargets.push(record.target);
+    }
+    if (!insideTweet) {
+      for (const node of record.addedNodes) queueAddedTweets(node);
+    }
   }
+
+  // Connected additions inside a tweet have settled under their final target.
+  for (const target of insideTargets) queueAddedTweets(target);
 
   // Irrelevant page churn does no scheduled work except the 5 s ad canary.
   if (pendingTweets.size || Date.now() >= nextCanaryAt) scheduleSweep();
@@ -187,14 +194,12 @@ document.addEventListener(
     if (!event.isTrusted) return;
 
     const btn = event.target instanceof Element ? event.target.closest('.xvd') : null;
-    if (!btn || btn.classList.contains('xvd--busy')) return;
+    const id = btn && ids.get(btn);
+    if (!id || btn.classList.contains('xvd--busy')) return;
 
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-
-    const id = ids.get(btn);
-    if (!id) return;
 
     btn.classList.remove('xvd--ok', 'xvd--err');
     btn.classList.add('xvd--busy');

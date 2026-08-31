@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.6.0
+
+- **Less work during active X timelines.** Mutation callbacks now classify
+  each changed target once, inspect settled subtrees only inside affected
+  posts, and keep root-level insertions local to the newly added subtree. A
+  representative real-Chromium workload fell from 741.67 µs to 316.67 µs
+  median work per scenario (57.3%) after 20 autoresearch experiments.
+- Extension-owned buttons are now recognized through their private identity,
+  not the `.xvd` class alone. An unrelated page element using that class can
+  no longer suppress button reinjection or have its clicks intercepted.
+- Browser behavioral checks validated nested quotes, batched post insertion,
+  removed-button restoration, CSS ad hiding, and the JavaScript ad-marker
+  fallback; hidden tabs still disconnect the observer and cancel pending work.
+
 ## 3.5.1
 
 - Download buttons on a newly rendered quoted video and its outer post are now
