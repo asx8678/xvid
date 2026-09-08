@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.6.1
+
+- Late download responses cannot overwrite a newer attempt's feedback.
+- Retained post controls refresh their IDs, disappear when media is removed,
+  and invalidate stale requests. Nested quotes use their own links and action
+  bars, including while the outer post is still rendering.
+- The ad canary uses reversible, extension-owned hiding so reused organic
+  cells become visible without overwriting the host page's inline styles.
+- Added synthetic background and DOM regression tests to CI. Tests use no
+  network, accounts, or real downloads; native browser checks remain separate.
+- Development and CI now use Node.js 24 LTS and maintained ESLint 10 tooling.
+  Runtime permissions and dependencies are unchanged.
+
 ## 3.6.0
 
 - **Less work during active X timelines.** Mutation callbacks now classify

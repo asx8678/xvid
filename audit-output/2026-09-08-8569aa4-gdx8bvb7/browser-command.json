@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "chromium",
+    "--headless",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-sync",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-extensions",
+    "--host-resolver-rules=MAP * ~NOTFOUND",
+    "--proxy-server=http://127.0.0.1:9",
+    "--proxy-bypass-list=<-loopback>",
+    "--disable-features=OptimizationHints,MediaRouter",
+    "--user-data-dir=/tmp/xvid-audit-tools-30nna45s/chromium-profile-osc4mt2r",
+    "--virtual-time-budget=6000",
+    "--dump-dom",
+    "file:///tmp/xvid-audit-tools-30nna45s/dom-fixture.html"
+  ],
+  "cwd": "/tmp/xvid-audit-tools-30nna45s",
+  "timeout_seconds": 25,
+  "isolation": "fresh disposable profile; proxy sink and DNS block; page CSP disallows all connections; no live extension APIs"
+}

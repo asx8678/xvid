@@ -2,7 +2,7 @@
 
 A local, privacy-focused Chrome/Chromium Manifest V3 extension that helps
 you use X on your terms: it adds a download button to videos and hides
-promoted posts. Deliberately minimal: no popup, no settings, no idle CPU —
+promoted posts. Deliberately minimal: no popup, no settings, no idle polling —
 it always downloads the highest-quality MP4 the post exposes, and it is
 active on x.com only (the toolbar icon stays greyed out everywhere else).
 
@@ -36,17 +36,25 @@ Filenames look like `@user_1234567890_1280x720.mp4`.
 ## Development
 
 The extension is three files (`background.js`, `content.js`, `content.css`)
-plus the manifest — no build step, no runtime dependencies. Dev tooling is
-lint/format only:
+plus the manifest — no build step, no runtime dependencies. Development uses
+Node.js 24 LTS (24.15 or newer within the 24.x line) and npm:
 
 ```bash
-npm install
+npm ci --ignore-scripts
+npm test
 npm run lint
 npm run format:check
 ```
 
-To verify a change, reload the unpacked extension and download from a video
-post, a multi-video post, and a quote of a video post.
+Tests use Node's built-in runner, synthetic metadata, and a jsdom model with
+controlled timers. They make no network requests or real downloads. The DOM
+model does not provide browser layout, native trusted input, or extension APIs.
+
+Also verify changes in a disposable browser profile: reload the unpacked
+extension and its X tab, then check a video post, a multi-video post, and a
+quote. Check Alt/Option-click Save As and cancellation, retry feedback, scrolling
+through reused posts, and ad-to-organic cell replacement. Native browser and
+current-X compatibility require this separate check.
 
 Contributions are welcome — see `CONTRIBUTING.md`. Release history lives in
 `CHANGELOG.md`.

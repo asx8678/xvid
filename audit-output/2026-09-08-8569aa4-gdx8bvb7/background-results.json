@@ -1,0 +1,62 @@
+{
+  "method": "Node VM; all browser/network APIs stubbed; assertions are audit artifacts",
+  "results": [
+    {
+      "name": "BG-01 malformed request ID is rejected before fetch; unknown action ignored",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-02 toolbar URL and post boundary parsing",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-03 variant ranking coerces bitrate and uses resolution tie break",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-04 defensive URL allowlist rejects non-HTTPS and other domains",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-05 own media wins, then quote before reply parent",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-06 malformed filename metadata falls back to safe fields",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-07 multi-video downloads start sequentially with unique suffixes",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-08 lookup error translations and response body cancellation",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-09 toolbar failure and ad canary badges retain originating tab",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-10 download rejection propagates; success acknowledges start only",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "BG-11 mixed exposed/non-MP4 media currently reports aggregate success",
+      "status": "passed",
+      "details": "Characterization only: 1 of 2 video items has an allowed MP4; unsupported item skipped without warning."
+    }
+  ],
+  "passed": 11,
+  "failed": 0
+}

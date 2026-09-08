@@ -55,11 +55,14 @@ bd close <id>         # Complete work
 ## Build & Test
 
 There is no build step — the repo root loads directly as an unpacked
-extension (`chrome://extensions` → Developer mode → Load unpacked). There is
-no test suite (removed in 3.0.1); verify changes manually on x.com.
+extension (`chrome://extensions` → Developer mode → Load unpacked). There is a
+synthetic Node/jsdom test suite. It covers metadata and DOM/request ownership
+without network access or real downloads. Also verify browser-specific changes
+manually in a disposable profile; see README.md.
 
 ```bash
-npm install          # dev deps only: eslint + prettier
+npm ci --ignore-scripts # Node.js 24 LTS, >=24.15 within 24.x; dev deps only
+npm test             # Node test runner and synthetic DOM model
 npm run lint         # eslint .
 npm run format:check # prettier --check .
 ```

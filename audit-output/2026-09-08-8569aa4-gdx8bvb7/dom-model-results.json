@@ -1,0 +1,62 @@
+{
+  "method": "jsdom 30.0.1 DOM model; unchanged content.js/content.css; no resource loading; chrome messaging stubbed; offsetParent explicitly models display:none ancestry because there is no layout. Not Chrome validation. DOM-11 invokes the captured handler using a synthetic event record and controlled timers.",
+  "results": [
+    {
+      "name": "DOM-01 DOM initial injection and duplicate prevention",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "DOM-02 MutationObserver model sees batch inserts and removed buttons",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "DOM-03 nested quotes with both action bars preserve independent buttons",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "DOM-04 page-owned class does not suppress injection; synthetic DOM click ignored",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "DOM-05 observing helper disconnects and rescan recovers on resume",
+      "status": "passed",
+      "details": "Calls visibility helper directly; actual hidden-tab transition was not exercised."
+    },
+    {
+      "name": "DOM-06 CSS model hides marked timeline/sidebar ads and retains organic sibling",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "DOM-07 English ad canary hides markerless cell and sends one diagnostic",
+      "status": "passed",
+      "details": null
+    },
+    {
+      "name": "DOM-08 REGRESSION: retained button must follow changed post identity",
+      "status": "failed",
+      "error": "retained button binding: expected \"2222222222\", observed \"1111111111\""
+    },
+    {
+      "name": "DOM-09 REGRESSION: organic content in a reused ad cell must become visible",
+      "status": "failed",
+      "error": "recycled organic cell visibility: expected \"block\", observed \"none\""
+    },
+    {
+      "name": "DOM-10 REGRESSION: temporarily missing outer bar must not use nested quote bar",
+      "status": "failed",
+      "error": "inner bar bindings after three sweeps: expected \"[\\\"2222222222\\\"]\", observed \"[\\\"1111111111\\\",\\\"1111111111\\\",\\\"1111111111\\\"]\""
+    },
+    {
+      "name": "DOM-11 REGRESSION: late response A must not settle newer request B",
+      "status": "failed",
+      "error": "current request feedback after late A reply: expected \"Synthetic current request B failed\", observed \"Download started\""
+    }
+  ],
+  "passed": 7,
+  "failed": 4
+}

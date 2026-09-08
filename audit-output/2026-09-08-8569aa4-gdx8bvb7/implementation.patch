@@ -1,0 +1,2530 @@
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -10,11 +10,12 @@
+   lint:
+     runs-on: ubuntu-latest
+     steps:
+-      - uses: actions/checkout@v4
+-      - uses: actions/setup-node@v4
++      - uses: actions/checkout@v6
++      - uses: actions/setup-node@v6
+         with:
+-          node-version: 20
++          node-version: 24
+           cache: npm
+-      - run: npm ci
++      - run: npm ci --ignore-scripts
++      - run: npm test
+       - run: npm run lint
+       - run: npm run format:check
+--- a/.prettierignore
++++ b/.prettierignore
+@@ -1 +1,2 @@
+ package-lock.json
++audit-output/
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,4 +1,17 @@
+ # Changelog
++
++## 3.6.1
++
++- Late download responses cannot overwrite a newer attempt's feedback.
++- Retained post controls refresh their IDs, disappear when media is removed,
++  and invalidate stale requests. Nested quotes use their own links and action
++  bars, including while the outer post is still rendering.
++- The ad canary uses reversible, extension-owned hiding so reused organic
++  cells become visible without overwriting the host page's inline styles.
++- Added synthetic background and DOM regression tests to CI. Tests use no
++  network, accounts, or real downloads; native browser checks remain separate.
++- Development and CI now use Node.js 24 LTS and maintained ESLint 10 tooling.
++  Runtime permissions and dependencies are unchanged.
+ 
+ ## 3.6.0
+ 
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -55,11 +55,14 @@
+ ## Build & Test
+ 
+ There is no build step — the repo root loads directly as an unpacked
+-extension (`chrome://extensions` → Developer mode → Load unpacked). There is
+-no test suite (removed in 3.0.1); verify changes manually on x.com.
++extension (`chrome://extensions` → Developer mode → Load unpacked). There is a
++synthetic Node/jsdom test suite. It covers metadata and DOM/request ownership
++without network access or real downloads. Also verify browser-specific changes
++manually in a disposable profile; see README.md.
+ 
+ ```bash
+-npm install          # dev deps only: eslint + prettier
++npm ci --ignore-scripts # Node.js 24 LTS, >=24.15 within 24.x; dev deps only
++npm test             # Node test runner and synthetic DOM model
+ npm run lint         # eslint .
+ npm run format:check # prettier --check .
+ ```
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -7,9 +7,12 @@
+ 1. Fork the repository
+ 2. Create a feature branch
+ 3. Make your changes
+-4. Run `npm run lint` and `npm run format:check`
+-5. Verify manually: load the unpacked extension and download from a video
+-   post, a multi-video post, and a quote of a video post
++4. Use Node.js 24 LTS (24.15+) and `npm ci --ignore-scripts`, then run
++   `npm test`, `npm run lint`, and `npm run format:check`
++5. Verify manually in a disposable browser profile: reload both the extension
++   and its tab, then check single/multi-video posts, nested quotes, Save As and
++   cancellation, retry feedback, post reuse, and ad-to-organic cell replacement.
++   Synthetic tests do not establish native browser or current-X compatibility.
+ 6. Submit a Pull Request
+ 
+ ## Guidelines
+--- a/README.md
++++ b/README.md
+@@ -2,7 +2,7 @@
+ 
+ A local, privacy-focused Chrome/Chromium Manifest V3 extension that helps
+ you use X on your terms: it adds a download button to videos and hides
+-promoted posts. Deliberately minimal: no popup, no settings, no idle CPU —
++promoted posts. Deliberately minimal: no popup, no settings, no idle polling —
+ it always downloads the highest-quality MP4 the post exposes, and it is
+ active on x.com only (the toolbar icon stays greyed out everywhere else).
+ 
+@@ -36,17 +36,25 @@
+ ## Development
+ 
+ The extension is three files (`background.js`, `content.js`, `content.css`)
+-plus the manifest — no build step, no runtime dependencies. Dev tooling is
+-lint/format only:
++plus the manifest — no build step, no runtime dependencies. Development uses
++Node.js 24 LTS (24.15 or newer within the 24.x line) and npm:
+ 
+ ```bash
+-npm install
++npm ci --ignore-scripts
++npm test
+ npm run lint
+ npm run format:check
+ ```
+ 
+-To verify a change, reload the unpacked extension and download from a video
+-post, a multi-video post, and a quote of a video post.
++Tests use Node's built-in runner, synthetic metadata, and a jsdom model with
++controlled timers. They make no network requests or real downloads. The DOM
++model does not provide browser layout, native trusted input, or extension APIs.
++
++Also verify changes in a disposable browser profile: reload the unpacked
++extension and its X tab, then check a video post, a multi-video post, and a
++quote. Check Alt/Option-click Save As and cancellation, retry feedback, scrolling
++through reused posts, and ad-to-organic cell replacement. Native browser and
++current-X compatibility require this separate check.
+ 
+ Contributions are welcome — see `CONTRIBUTING.md`. Release history lives in
+ `CHANGELOG.md`.
+--- a/content.css
++++ b/content.css
+@@ -51,6 +51,7 @@
+    Timeline: hide the whole virtualized cell. Sidebar: hide only the marker
+    itself — hiding its enclosing module would take out organic entries too. */
+ div[data-testid='cellInnerDiv']:has([data-testid='placementTracking']),
++div[data-testid='cellInnerDiv'].xvd-hidden-ad,
+ [data-testid='sidebarColumn'] [data-testid='placementTracking'] {
+   display: none !important;
+ }
+--- a/content.js
++++ b/content.js
+@@ -12,6 +12,7 @@
+ const SWEEP_MIN_INTERVAL_MS = 200;
+ const ids = new WeakMap(); // tweet ID per button (not exposed to the page)
+ const resultTimers = new WeakMap();
++const requests = new WeakMap();
+ const pendingTweets = new Set();
+ let sweepTimer = 0;
+ let lastSweepAt = 0;
+@@ -22,14 +23,23 @@
+   '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-5 5a1 1 0 0 1-1.414 0l-5-5a1 1 0 1 1 1.414-1.414L11 13.586V3a1 1 0 0 1 1-1zM5 20a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5z"/></svg>';
+ 
+ function getTweetId(block) {
+-  const link = block.querySelector(SEL_TIMED_LINK) || block.querySelector(SEL_TWEET_LINK);
+-  return link?.href.match(/\/status(?:es)?\/(\d+)/)?.[1] || null;
++  for (const selector of [SEL_TIMED_LINK, SEL_TWEET_LINK]) {
++    for (const link of block.querySelectorAll(selector)) {
++      if (link.closest(SEL_TWEET) !== block) continue;
++      const id = link.href.match(/\/status(?:es)?\/(\d+)/)?.[1];
++      if (id) return id;
++    }
++  }
++  return null;
+ }
+ 
+ function findActionBar(block) {
+   const groups = block.querySelectorAll(SEL_GROUP);
++  let fallback = null;
+   for (let index = groups.length - 1; index >= 0; index--) {
+     const group = groups[index];
++    if (group.closest(SEL_TWEET) !== block) continue;
++    fallback ??= group;
+     if (
+       group.children.length >= 4 &&
+       group.querySelectorAll('button, [role="button"], a[href]').length >= 4
+@@ -37,14 +47,10 @@
+       return group;
+     }
+   }
+-  return groups[groups.length - 1] || null;
+-}
+-
+-function inject(block) {
+-  const id = getTweetId(block);
+-  const bar = id && findActionBar(block);
+-  if (!bar) return;
+-
++  return fallback;
++}
++
++function inject(id, bar) {
+   const btn = document.createElement('button');
+   btn.type = 'button';
+   btn.className = 'xvd';
+@@ -76,19 +82,41 @@
+   for (const block of node.querySelectorAll(SEL_TWEET)) pendingTweets.add(block);
+ }
+ 
+-function hasOwnButton(block) {
+-  for (const button of block.getElementsByClassName('xvd')) {
+-    if (ids.has(button) && button.closest(SEL_TWEET) === block) return true;
+-  }
+-  return false;
++function resetButton(btn) {
++  clearTimeout(requests.get(btn)?.timeout);
++  requests.delete(btn);
++  clearTimeout(resultTimers.get(btn));
++  resultTimers.delete(btn);
++  btn.classList.remove('xvd--busy', 'xvd--ok', 'xvd--err');
++  btn.title = IDLE_TITLE;
++}
++
++function reconcileButton(block) {
++  const id = getTweetId(block);
++  const bar = id && block.querySelector('video') && findActionBar(block);
++  let kept = null;
++  // Snapshot the live collection before removing duplicates or stale controls.
++  for (const btn of [...block.getElementsByClassName('xvd')]) {
++    if (!ids.has(btn) || btn.closest(SEL_TWEET) !== block) continue;
++    if (bar && btn.parentElement === bar && !kept) {
++      kept = btn;
++      if (ids.get(btn) !== id) {
++        resetButton(btn);
++        ids.set(btn, id);
++      }
++    } else {
++      resetButton(btn);
++      ids.delete(btn);
++      btn.remove();
++    }
++  }
++  if (bar && !kept) inject(id, bar);
+ }
+ 
+ function sweep() {
+   lastSweepAt = Date.now();
+   for (const block of pendingTweets) {
+-    if (block.isConnected && block.querySelector('video') && !hasOwnButton(block)) {
+-      inject(block);
+-    }
++    if (block.isConnected) reconcileButton(block);
+   }
+   pendingTweets.clear();
+   adCanary();
+@@ -103,26 +131,41 @@
+ // keeps organic tweets (even ones literally containing "Ad") out.
+ const AD_LABELS = new Set(['Ad', 'Promoted']);
+ const CANARY_EVERY_MS = 5000;
++const HIDDEN_AD_CLASS = 'xvd-hidden-ad';
++const hiddenAdCells = new Set();
+ let nextCanaryAt = 0;
+ let rotReported = false;
+ 
++function isLabeledAd(block) {
++  if (block.querySelector('time')) return false;
++  return [...block.querySelectorAll('span')].some(
++    (span) =>
++      span.childElementCount === 0 &&
++      AD_LABELS.has(span.textContent.trim()) &&
++      !span.closest('[data-testid="tweetText"]')
++  );
++}
++
+ function adCanary() {
++  // Recheck our hidden cells even between discovery scans. Visibility cannot
++  // be the guard here: our own class makes both ads and reused organic posts hidden.
++  for (const cell of hiddenAdCells) {
++    if (!cell.isConnected || ![...cell.querySelectorAll(SEL_TWEET)].some(isLabeledAd)) {
++      cell.classList.remove(HIDDEN_AD_CLASS);
++      hiddenAdCells.delete(cell);
++    }
++  }
+   if (Date.now() < nextCanaryAt) return;
+   nextCanaryAt = Date.now() + CANARY_EVERY_MS;
+ 
+   for (const block of document.querySelectorAll(SEL_TWEET)) {
+-    if (block.offsetParent === null || block.querySelector('time')) continue;
+-
+-    const labeled = [...block.querySelectorAll('span')].some(
+-      (span) =>
+-        span.childElementCount === 0 &&
+-        AD_LABELS.has(span.textContent.trim()) &&
+-        !span.closest('[data-testid="tweetText"]')
+-    );
+-    if (!labeled) continue;
++    if (block.offsetParent === null || !isLabeledAd(block)) continue;
+ 
+     const cell = block.closest('div[data-testid="cellInnerDiv"]');
+-    if (cell) cell.style.display = 'none';
++    if (cell && !cell.classList.contains(HIDDEN_AD_CLASS)) {
++      cell.classList.add(HIDDEN_AD_CLASS);
++      hiddenAdCells.add(cell);
++    }
+     if (!rotReported) {
+       rotReported = true;
+       chrome.runtime.sendMessage({ action: 'adMarkerRot' }, () => chrome.runtime.lastError);
+@@ -133,26 +176,30 @@
+ function collectMutations(records) {
+   const targets = new Map();
+   const insideTargets = [];
++  let changed = false;
+   for (const record of records) {
+     // Appending our own button must not schedule another sweep.
+     if (record.addedNodes.length === 1 && ids.has(record.addedNodes[0])) continue;
+ 
+-    let insideTweet = targets.get(record.target);
++    changed = true;
++    const target = record.target instanceof Element ? record.target : record.target.parentElement;
++    let insideTweet = targets.get(target);
+     if (insideTweet === undefined) {
+-      insideTweet = queueTweet(record.target);
+-      targets.set(record.target, insideTweet);
+-      if (insideTweet) insideTargets.push(record.target);
++      insideTweet = queueTweet(target);
++      targets.set(target, insideTweet);
++      if (insideTweet) insideTargets.push(target);
+     }
+     if (!insideTweet) {
+       for (const node of record.addedNodes) queueAddedTweets(node);
+     }
+   }
++  if (!changed) return;
+ 
+   // Connected additions inside a tweet have settled under their final target.
+   for (const target of insideTargets) queueAddedTweets(target);
+ 
+-  // Irrelevant page churn does no scheduled work except the 5 s ad canary.
+-  if (pendingTweets.size || Date.now() >= nextCanaryAt) scheduleSweep();
++  // Hidden fallback cells also need reconciliation when the host reuses them.
++  if (pendingTweets.size || hiddenAdCells.size || Date.now() >= nextCanaryAt) scheduleSweep();
+ }
+ 
+ // X mutates the DOM continuously while scrolling. One timer coalesces each
+@@ -188,56 +235,78 @@
+   resultTimers.set(btn, resetId);
+ }
+ 
++function finishRequest(btn, request, ok, title) {
++  if (requests.get(btn) !== request) return;
++  clearTimeout(request.timeout);
++  requests.delete(btn);
++  if (btn.isConnected) setResult(btn, ok, title);
++}
++
+ document.addEventListener(
+   'click',
+   (event) => {
+     if (!event.isTrusted) return;
+ 
+     const btn = event.target instanceof Element ? event.target.closest('.xvd') : null;
+-    const id = btn && ids.get(btn);
+-    if (!id || btn.classList.contains('xvd--busy')) return;
++    if (!btn || !ids.has(btn)) return;
+ 
+     event.preventDefault();
+     event.stopPropagation();
+     event.stopImmediatePropagation();
+ 
+-    btn.classList.remove('xvd--ok', 'xvd--err');
++    const block = btn.closest(SEL_TWEET);
++    if (!block) return;
++    // A click may arrive before the observer sees a reused post's new href.
++    reconcileButton(block);
++    const id = ids.get(btn);
++    if (!id || !btn.isConnected || requests.has(btn)) return;
++
++    resetButton(btn);
+     btn.classList.add('xvd--busy');
++    const request = {};
++    requests.set(btn, request);
+ 
+     // Save As blocks the background response for as long as the user keeps
+     // the dialog open, so only plain downloads get a response deadline.
+     const saveAs = event.altKey;
+-    const timeout = saveAs
++    request.timeout = saveAs
+       ? 0
+-      : setTimeout(() => setResult(btn, false, 'Extension did not respond'), 15000);
+-
+-    chrome.runtime.sendMessage({ action: 'download', id, saveAs }, (response) => {
+-      clearTimeout(timeout);
+-      // Not busy means the timeout already reported failure — a late reply
+-      // must not flip the button to a stale result.
+-      if (!btn.isConnected || !btn.classList.contains('xvd--busy')) return;
+-      const ok = !chrome.runtime.lastError && response?.ok;
+-      setResult(
+-        btn,
+-        ok,
+-        ok
+-          ? saveAs
+-            ? 'Save As opened'
+-            : 'Download started'
+-          : response?.err || chrome.runtime.lastError?.message || 'Download failed'
+-      );
+-    });
++      : setTimeout(() => finishRequest(btn, request, false, 'Extension did not respond'), 15000);
++
++    try {
++      chrome.runtime.sendMessage({ action: 'download', id, saveAs }, (response) => {
++        const ok = !chrome.runtime.lastError && response?.ok;
++        finishRequest(
++          btn,
++          request,
++          ok,
++          ok
++            ? saveAs
++              ? 'Save As opened'
++              : 'Download started'
++            : response?.err || chrome.runtime.lastError?.message || 'Download failed'
++        );
++      });
++    } catch (err) {
++      finishRequest(btn, request, false, err?.message || 'Download failed');
++    }
+   },
+   true
+ );
+ 
+-// Observe only while the tab is visible: hidden tabs do zero work, and one
+-// full scan on return catches anything that changed while hidden.
++// Observe the DOM only while the tab is visible. One full scan on return
++// catches anything that changed while hidden.
+ const observer = new MutationObserver(collectMutations);
+ 
+ function setObserving(active) {
+   if (active) {
+-    observer.observe(document.documentElement, { childList: true, subtree: true });
++    observer.observe(document.documentElement, {
++      childList: true,
++      subtree: true,
++      attributes: true,
++      attributeFilter: ['href'],
++      characterData: true,
++    });
+     queueAddedTweets(document.documentElement);
+     sweep();
+   } else {
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -3,9 +3,16 @@
+ 
+ export default [
+   {
+-    ignores: ['dist/', 'node_modules/', 'coverage/', '.pi/'],
++    ignores: ['dist/', 'node_modules/', 'coverage/', '.pi/', 'audit-output/'],
+   },
+   js.configs.recommended,
++  {
++    files: ['tests/**/*.cjs'],
++    languageOptions: {
++      globals: globals.node,
++      sourceType: 'commonjs',
++    },
++  },
+   {
+     files: ['background.js', 'content.js'],
+     languageOptions: {
+--- a/manifest.json
++++ b/manifest.json
+@@ -1,7 +1,7 @@
+ {
+   "manifest_version": 3,
+   "name": "xHelper",
+-  "version": "3.6.0",
++  "version": "3.6.1",
+   "description": "Your X.com helper: hides promoted posts and adds a download button that always saves the highest-quality MP4.",
+   "homepage_url": "https://github.com/asx8678/xvid",
+   "minimum_chrome_version": "105",
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,26 +1,237 @@
+ {
+   "name": "xhelper",
+-  "version": "3.6.0",
++  "version": "3.6.1",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "xhelper",
+-      "version": "3.6.0",
++      "version": "3.6.1",
+       "devDependencies": {
+-        "@eslint/js": "^9.23.0",
+-        "eslint": "^9.23.0",
++        "@eslint/js": "^10.0.1",
++        "eslint": "^10.10.0",
+         "globals": "^15.14.0",
++        "jsdom": "^30.0.1",
+         "prettier": "^3.5.3"
+       },
+       "engines": {
+-        "node": ">=18"
++        "node": "^24.15.0"
++      }
++    },
++    "node_modules/@asamuzakjp/css-color": {
++      "version": "6.0.7",
++      "resolved": "https://registry.npmjs.org/@asamuzakjp/css-color/-/css-color-6.0.7.tgz",
++      "integrity": "sha512-vC/bk1Lz7Tn/EfU9/apOTBk80/8dyGyWMowPoV1tJ52muDGsDqt2HPT2klrFUiY60MQmQv9q8yIht15JnBgDGw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@csstools/css-calc": "^3.3.0",
++        "@csstools/css-color-parser": "^4.1.10",
++        "@csstools/css-parser-algorithms": "^4.0.0",
++        "@csstools/css-tokenizer": "^4.0.0",
++        "lru-cache": "^11.5.2"
++      },
++      "engines": {
++        "node": "^22.13.0 || >=24.0.0"
++      }
++    },
++    "node_modules/@asamuzakjp/dom-selector": {
++      "version": "8.3.2",
++      "resolved": "https://registry.npmjs.org/@asamuzakjp/dom-selector/-/dom-selector-8.3.2.tgz",
++      "integrity": "sha512-93Z1N+BQNXysodoicpOIyNh2drHfz/CTf9nnT0FEx72GJcIiwgydD7tGAr78j41LsYn3hlRn+LdGPuBLn1Bl8Q==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "bidi-js": "^1.0.3",
++        "css-tree": "^3.2.1",
++        "is-potential-custom-element-name": "^1.0.1",
++        "lru-cache": "^11.5.2"
++      },
++      "engines": {
++        "node": "^22.13.0 || >=24.0.0"
++      }
++    },
++    "node_modules/@bramus/specificity": {
++      "version": "2.4.2",
++      "resolved": "https://registry.npmjs.org/@bramus/specificity/-/specificity-2.4.2.tgz",
++      "integrity": "sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "css-tree": "^3.0.0"
++      },
++      "bin": {
++        "specificity": "bin/cli.js"
++      }
++    },
++    "node_modules/@cacheable/memory": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/@cacheable/memory/-/memory-2.2.0.tgz",
++      "integrity": "sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@cacheable/utils": "^2.5.0",
++        "@keyv/bigmap": "^1.3.1",
++        "hookified": "^1.15.1",
++        "keyv": "^5.6.0"
++      }
++    },
++    "node_modules/@cacheable/utils": {
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/@cacheable/utils/-/utils-2.5.0.tgz",
++      "integrity": "sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hashery": "^1.5.1",
++        "keyv": "^5.6.0"
++      }
++    },
++    "node_modules/@csstools/color-helpers": {
++      "version": "6.1.1",
++      "resolved": "https://registry.npmjs.org/@csstools/color-helpers/-/color-helpers-6.1.1.tgz",
++      "integrity": "sha512-gLNsunvwf3mCi5u5o46/Z/JcJMnhbHSaZ69rkgPzNM3J4s8hWwpPUQB6/tt0EDFyCiWzxANlx+2LJwpYj4zS1w==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT-0",
++      "engines": {
++        "node": ">=20.19.0"
++      }
++    },
++    "node_modules/@csstools/css-calc": {
++      "version": "3.3.0",
++      "resolved": "https://registry.npmjs.org/@csstools/css-calc/-/css-calc-3.3.0.tgz",
++      "integrity": "sha512-c5ihYsPkdG6JCkU2zTMm4+k6r7RXuGxtWYhu5DHMIiF1FHzrfmHL5so11AoFpUv/tu61xfcmT4AmKoFfMPoqdQ==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-parser-algorithms": "^4.0.0",
++        "@csstools/css-tokenizer": "^4.0.0"
++      }
++    },
++    "node_modules/@csstools/css-color-parser": {
++      "version": "4.2.2",
++      "resolved": "https://registry.npmjs.org/@csstools/css-color-parser/-/css-color-parser-4.2.2.tgz",
++      "integrity": "sha512-3QKjR/vxyjcSXBLgb6lP0S3MGdvwbmqSsvLPbYdVORqPDc8FX1HAJ0Spk38bxaRXgvENTA47tlhhbb5Z2e8hEg==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "@csstools/color-helpers": "^6.1.1",
++        "@csstools/css-calc": "^3.3.0"
++      },
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-parser-algorithms": "^4.0.0",
++        "@csstools/css-tokenizer": "^4.0.0"
++      }
++    },
++    "node_modules/@csstools/css-parser-algorithms": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/@csstools/css-parser-algorithms/-/css-parser-algorithms-4.0.0.tgz",
++      "integrity": "sha512-+B87qS7fIG3L5h3qwJ/IFbjoVoOe/bpOdh9hAjXbvx0o8ImEmUsGXN0inFOnk2ChCFgqkkGFQ+TpM5rbhkKe4w==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "peerDependencies": {
++        "@csstools/css-tokenizer": "^4.0.0"
++      }
++    },
++    "node_modules/@csstools/css-syntax-patches-for-csstree": {
++      "version": "1.1.12",
++      "resolved": "https://registry.npmjs.org/@csstools/css-syntax-patches-for-csstree/-/css-syntax-patches-for-csstree-1.1.12.tgz",
++      "integrity": "sha512-3vLQK+dXxhBMR2Wx99PTCifE+vHtW2ndZWyla8yK813ev6oGhyn8Lja8jCyGAWTJ+LEYZK7EVtJxrDj8ztevJw==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT-0",
++      "peerDependencies": {
++        "css-tree": "^3.2.1"
++      },
++      "peerDependenciesMeta": {
++        "css-tree": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@csstools/css-tokenizer": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/@csstools/css-tokenizer/-/css-tokenizer-4.0.0.tgz",
++      "integrity": "sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/csstools"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/csstools"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.19.0"
+       }
+     },
+     "node_modules/@eslint-community/eslint-utils": {
+-      "version": "4.9.1",
+-      "resolved": "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.9.1.tgz",
+-      "integrity": "sha512-phrYmNiYppR7znFEdqgfWHXR6NCkZEK7hwWDHZUjit/2/U0r6XvkDl0SYnoM51Hq7FhCGdLDT6zxCCOY1hexsQ==",
++      "version": "4.10.1",
++      "resolved": "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.10.1.tgz",
++      "integrity": "sha512-cuadcxVFE8sDK6iWJbs8Sn0av2Nrh2QSGQhVlBW9AaAHqHwjWsZHT8LJ4hFGPh7ASBV2deFdM7H/DPjulmh8rg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+@@ -60,118 +271,107 @@
+       }
+     },
+     "node_modules/@eslint/config-array": {
+-      "version": "0.21.2",
+-      "resolved": "https://registry.npmjs.org/@eslint/config-array/-/config-array-0.21.2.tgz",
+-      "integrity": "sha512-nJl2KGTlrf9GjLimgIru+V/mzgSK0ABCDQRvxw5BjURL7WfH5uoWmizbH7QB6MmnMBd8cIC9uceWnezL1VZWWw==",
++      "version": "0.23.5",
++      "resolved": "https://registry.npmjs.org/@eslint/config-array/-/config-array-0.23.5.tgz",
++      "integrity": "sha512-Y3kKLvC1dvTOT+oGlqNQ1XLqK6D1HU2YXPc52NmAlJZbMMWDzGYXMiPRJ8TYD39muD/OTjlZmNJ4ib7dvSrMBA==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "dependencies": {
+-        "@eslint/object-schema": "^2.1.7",
++        "@eslint/object-schema": "^3.0.5",
+         "debug": "^4.3.1",
+-        "minimatch": "^3.1.5"
+-      },
+-      "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "minimatch": "^10.2.4"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       }
+     },
+     "node_modules/@eslint/config-helpers": {
+-      "version": "0.4.2",
+-      "resolved": "https://registry.npmjs.org/@eslint/config-helpers/-/config-helpers-0.4.2.tgz",
+-      "integrity": "sha512-gBrxN88gOIf3R7ja5K9slwNayVcZgK6SOUORm2uBzTeIEfeVaIhOpCtTox3P6R7o2jLFwLFTLnC7kU/RGcYEgw==",
++      "version": "0.7.0",
++      "resolved": "https://registry.npmjs.org/@eslint/config-helpers/-/config-helpers-0.7.0.tgz",
++      "integrity": "sha512-DObd/KKUsU+FaFv4PLxSRenpXfQWmPXXP3pPZ6/K1PCrMu2vQpMDMuQe/BqYeoLcz8ro0bVDF1RxOJgfVEdhUw==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "dependencies": {
+-        "@eslint/core": "^0.17.0"
+-      },
+-      "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "@eslint/core": "^1.2.1"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       }
+     },
+     "node_modules/@eslint/core": {
+-      "version": "0.17.0",
+-      "resolved": "https://registry.npmjs.org/@eslint/core/-/core-0.17.0.tgz",
+-      "integrity": "sha512-yL/sLrpmtDaFEiUj1osRP4TI2MDz1AddJL+jZ7KSqvBuliN4xqYY54IfdN8qD8Toa6g1iloph1fxQNkjOxrrpQ==",
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/@eslint/core/-/core-1.2.1.tgz",
++      "integrity": "sha512-MwcE1P+AZ4C6DWlpin/OmOA54mmIZ/+xZuJiQd4SyB29oAJjN30UW9wkKNptW2ctp4cEsvhlLY/CsQ1uoHDloQ==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "dependencies": {
+         "@types/json-schema": "^7.0.15"
+       },
+       "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+-      }
+-    },
+-    "node_modules/@eslint/eslintrc": {
+-      "version": "3.3.6",
+-      "resolved": "https://registry.npmjs.org/@eslint/eslintrc/-/eslintrc-3.3.6.tgz",
+-      "integrity": "sha512-l2Ul9PrHsPCKcEY/ac7VgFj9D80C7S68sOKc618SyHDPK36s1XcFebXY0iTzUVn4Yq+YbwvSnDmCz9yxjX+QrA==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "ajv": "^6.14.0",
+-        "debug": "^4.3.2",
+-        "espree": "^10.0.1",
+-        "globals": "^14.0.0",
+-        "ignore": "^5.2.0",
+-        "import-fresh": "^3.2.1",
+-        "js-yaml": "^4.3.0",
+-        "minimatch": "^3.1.5",
+-        "strip-json-comments": "^3.1.1"
+-      },
+-      "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+-      },
+-      "funding": {
+-        "url": "https://opencollective.com/eslint"
+-      }
+-    },
+-    "node_modules/@eslint/eslintrc/node_modules/globals": {
+-      "version": "14.0.0",
+-      "resolved": "https://registry.npmjs.org/globals/-/globals-14.0.0.tgz",
+-      "integrity": "sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=18"
+-      },
+-      "funding": {
+-        "url": "https://github.com/sponsors/sindresorhus"
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       }
+     },
+     "node_modules/@eslint/js": {
+-      "version": "9.39.5",
+-      "resolved": "https://registry.npmjs.org/@eslint/js/-/js-9.39.5.tgz",
+-      "integrity": "sha512-QywQuszQh77pIXCsq998c8hbhSTI/azTty1Z6N53dmAudKHhy573j3yvRLsX2BSp8YpLtoCEG8E9DJe+8zUh4A==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      "version": "10.0.1",
++      "resolved": "https://registry.npmjs.org/@eslint/js/-/js-10.0.1.tgz",
++      "integrity": "sha512-zeR9k5pd4gxjZ0abRoIaxdc7I3nDktoXZk2qOv9gCNWx3mVwEn32VRhyLaRsDiJjTs0xq/T8mfPtyuXu7GWBcA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       },
+       "funding": {
+         "url": "https://eslint.org/donate"
++      },
++      "peerDependencies": {
++        "eslint": "^10.0.0"
++      },
++      "peerDependenciesMeta": {
++        "eslint": {
++          "optional": true
++        }
+       }
+     },
+     "node_modules/@eslint/object-schema": {
+-      "version": "2.1.7",
+-      "resolved": "https://registry.npmjs.org/@eslint/object-schema/-/object-schema-2.1.7.tgz",
+-      "integrity": "sha512-VtAOaymWVfZcmZbp6E2mympDIHvyjXs/12LqWYjVw6qjrfF+VK+fyG33kChz3nnK+SU5/NeHOqrTEHS8sXO3OA==",
++      "version": "3.0.5",
++      "resolved": "https://registry.npmjs.org/@eslint/object-schema/-/object-schema-3.0.5.tgz",
++      "integrity": "sha512-vqTaUEgxzm+YDSdElad6PiRoX4t8VGDjCtt05zn4nU810UIx/uNEV7/lZJ6KwFThKZOzOxzXy48da+No7HZaMw==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       }
+     },
+     "node_modules/@eslint/plugin-kit": {
+-      "version": "0.4.1",
+-      "resolved": "https://registry.npmjs.org/@eslint/plugin-kit/-/plugin-kit-0.4.1.tgz",
+-      "integrity": "sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==",
++      "version": "0.7.3",
++      "resolved": "https://registry.npmjs.org/@eslint/plugin-kit/-/plugin-kit-0.7.3.tgz",
++      "integrity": "sha512-IkO+/KEUvwbVpiURZg+P7zF74z5Jxe0UgJxVni+RtoHQ6IZieXaO02kmadomap/q+l6bc/jdPGGqTjhuZnuz1Q==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "dependencies": {
+-        "@eslint/core": "^0.17.0",
++        "@eslint/core": "^1.2.1",
+         "levn": "^0.4.1"
+       },
+       "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      }
++    },
++    "node_modules/@exodus/bytes": {
++      "version": "1.15.1",
++      "resolved": "https://registry.npmjs.org/@exodus/bytes/-/bytes-1.15.1.tgz",
++      "integrity": "sha512-S6mL0yNB/Abt9Ei4tq8gDhcczc4S3+vQ4ra7vxnAf+YHC02srtqxKKZghx2Dq6p0e66THKwR6r8N6P95wEty7Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      },
++      "peerDependencies": {
++        "@noble/hashes": "^1.8.0 || ^2.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@noble/hashes": {
++          "optional": true
++        }
+       }
+     },
+     "node_modules/@humanfs/core": {
+@@ -240,6 +440,37 @@
+         "url": "https://github.com/sponsors/nzakas"
+       }
+     },
++    "node_modules/@keyv/bigmap": {
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/@keyv/bigmap/-/bigmap-1.3.1.tgz",
++      "integrity": "sha512-WbzE9sdmQtKy8vrNPa9BRnwZh5UF4s1KTmSK0KUVLo3eff5BlQNNWDnFOouNpKfPKDnms9xynJjsMYjMaT/aFQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hashery": "^1.4.0",
++        "hookified": "^1.15.0"
++      },
++      "engines": {
++        "node": ">= 18"
++      },
++      "peerDependencies": {
++        "keyv": "^5.6.0"
++      }
++    },
++    "node_modules/@keyv/serialize": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/@keyv/serialize/-/serialize-1.1.1.tgz",
++      "integrity": "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@types/esrecurse": {
++      "version": "4.3.1",
++      "resolved": "https://registry.npmjs.org/@types/esrecurse/-/esrecurse-4.3.1.tgz",
++      "integrity": "sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@types/estree": {
+       "version": "1.0.9",
+       "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+@@ -255,9 +486,9 @@
+       "license": "MIT"
+     },
+     "node_modules/acorn": {
+-      "version": "8.17.0",
+-      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.17.0.tgz",
+-      "integrity": "sha512-xRQbDb9BnwDafYNn6Vwl839DYVjqXYb1XVGtWAZ1kcDc6iwAL4hg3B1dZlRiuENFeO2H53gFG3in621AdERVAg==",
++      "version": "8.18.0",
++      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.18.0.tgz",
++      "integrity": "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==",
+       "dev": true,
+       "license": "MIT",
+       "bin": {
+@@ -294,100 +525,52 @@
+         "url": "https://github.com/sponsors/epoberezkin"
+       }
+     },
+-    "node_modules/ansi-styles": {
+-      "version": "4.3.0",
+-      "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz",
+-      "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "color-convert": "^2.0.1"
+-      },
+-      "engines": {
+-        "node": ">=8"
+-      },
+-      "funding": {
+-        "url": "https://github.com/chalk/ansi-styles?sponsor=1"
+-      }
+-    },
+-    "node_modules/argparse": {
+-      "version": "2.0.1",
+-      "resolved": "https://registry.npmjs.org/argparse/-/argparse-2.0.1.tgz",
+-      "integrity": "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==",
+-      "dev": true,
+-      "license": "Python-2.0"
+-    },
+     "node_modules/balanced-match": {
+-      "version": "1.0.2",
+-      "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-1.0.2.tgz",
+-      "integrity": "sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==",
+-      "dev": true,
+-      "license": "MIT"
++      "version": "4.0.4",
++      "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz",
++      "integrity": "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "18 || 20 || >=22"
++      }
++    },
++    "node_modules/bidi-js": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/bidi-js/-/bidi-js-1.1.0.tgz",
++      "integrity": "sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "require-from-string": "^2.0.2"
++      }
+     },
+     "node_modules/brace-expansion": {
+-      "version": "1.1.18",
+-      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.18.tgz",
+-      "integrity": "sha512-Edep/X9fGqVNmzKBVsDYIOtD+z1tuezV70LBjdCst9Tqu76lsnvRiZ6oTic1n+/BIwX6QDGAO94PN4N2SADvtw==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "balanced-match": "^1.0.0",
+-        "concat-map": "0.0.1"
+-      }
+-    },
+-    "node_modules/callsites": {
+-      "version": "3.1.0",
+-      "resolved": "https://registry.npmjs.org/callsites/-/callsites-3.1.0.tgz",
+-      "integrity": "sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=6"
+-      }
+-    },
+-    "node_modules/chalk": {
+-      "version": "4.1.2",
+-      "resolved": "https://registry.npmjs.org/chalk/-/chalk-4.1.2.tgz",
+-      "integrity": "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "ansi-styles": "^4.1.0",
+-        "supports-color": "^7.1.0"
+-      },
+-      "engines": {
+-        "node": ">=10"
+-      },
+-      "funding": {
+-        "url": "https://github.com/chalk/chalk?sponsor=1"
+-      }
+-    },
+-    "node_modules/color-convert": {
+-      "version": "2.0.1",
+-      "resolved": "https://registry.npmjs.org/color-convert/-/color-convert-2.0.1.tgz",
+-      "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "color-name": "~1.1.4"
+-      },
+-      "engines": {
+-        "node": ">=7.0.0"
+-      }
+-    },
+-    "node_modules/color-name": {
+-      "version": "1.1.4",
+-      "resolved": "https://registry.npmjs.org/color-name/-/color-name-1.1.4.tgz",
+-      "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
+-      "dev": true,
+-      "license": "MIT"
+-    },
+-    "node_modules/concat-map": {
+-      "version": "0.0.1",
+-      "resolved": "https://registry.npmjs.org/concat-map/-/concat-map-0.0.1.tgz",
+-      "integrity": "sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==",
+-      "dev": true,
+-      "license": "MIT"
++      "version": "5.0.9",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz",
++      "integrity": "sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "balanced-match": "^4.0.2"
++      },
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
++    "node_modules/cacheable": {
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/cacheable/-/cacheable-2.5.0.tgz",
++      "integrity": "sha512-60cyAOytib/OzBw1JNSoSV/boK1AtHryDIjvVBk7XbN4ugfkM3+Sry7fEjNgPMGgOjuaZPAp8ruZ0Cxafwyq9g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@cacheable/memory": "^2.2.0",
++        "@cacheable/utils": "^2.5.0",
++        "hookified": "^1.15.0",
++        "keyv": "^5.6.0",
++        "qified": "^0.10.1"
++      }
+     },
+     "node_modules/cross-spawn": {
+       "version": "7.0.6",
+@@ -404,6 +587,49 @@
+         "node": ">= 8"
+       }
+     },
++    "node_modules/css-tree": {
++      "version": "3.2.1",
++      "resolved": "https://registry.npmjs.org/css-tree/-/css-tree-3.2.1.tgz",
++      "integrity": "sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "mdn-data": "2.27.1",
++        "source-map-js": "^1.2.1"
++      },
++      "engines": {
++        "node": "^10 || ^12.20.0 || ^14.13.0 || >=15.0.0"
++      }
++    },
++    "node_modules/data-urls": {
++      "version": "7.0.0",
++      "resolved": "https://registry.npmjs.org/data-urls/-/data-urls-7.0.0.tgz",
++      "integrity": "sha512-23XHcCF+coGYevirZceTVD7NdJOqVn+49IHyxgszm+JIiHLoB2TkmPtsYkNWT1pvRSGkc35L6NHs0yHkN2SumA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "whatwg-mimetype": "^5.0.0",
++        "whatwg-url": "^16.0.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      }
++    },
++    "node_modules/data-urls/node_modules/whatwg-url": {
++      "version": "16.0.1",
++      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-16.0.1.tgz",
++      "integrity": "sha512-1to4zXBxmXHV3IiSSEInrreIlu02vUOvrhxJJH5vcxYTBDAx51cqZiKdyTxlecdKNSjj8EcxGBxNf6Vg+945gw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.11.0",
++        "tr46": "^6.0.0",
++        "webidl-conversions": "^8.0.1"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
++      }
++    },
+     "node_modules/debug": {
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+@@ -422,6 +648,13 @@
+         }
+       }
+     },
++    "node_modules/decimal.js": {
++      "version": "10.6.0",
++      "resolved": "https://registry.npmjs.org/decimal.js/-/decimal.js-10.6.0.tgz",
++      "integrity": "sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/deep-is": {
+       "version": "0.1.4",
+       "resolved": "https://registry.npmjs.org/deep-is/-/deep-is-0.1.4.tgz",
+@@ -429,6 +662,19 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/entities": {
++      "version": "8.1.0",
++      "resolved": "https://registry.npmjs.org/entities/-/entities-8.1.0.tgz",
++      "integrity": "sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20.19.0"
++      },
++      "funding": {
++        "url": "https://github.com/fb55/entities?sponsor=1"
++      }
++    },
+     "node_modules/escape-string-regexp": {
+       "version": "4.0.0",
+       "resolved": "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz",
+@@ -443,44 +689,43 @@
+       }
+     },
+     "node_modules/eslint": {
+-      "version": "9.39.5",
+-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-9.39.5.tgz",
+-      "integrity": "sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==",
+-      "dev": true,
+-      "license": "MIT",
++      "version": "10.10.0",
++      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.10.0.tgz",
++      "integrity": "sha512-NPXn6r5zl4uET1DAVPaOwzX3rut4c0wcmw3dWJAfOsTM5+TogXo0DDjz8pwm/hL8cyVNpHqeK4JpN0NjnyFFNw==",
++      "dev": true,
++      "license": "MIT",
++      "workspaces": [
++        "packages/*"
++      ],
+       "dependencies": {
+         "@eslint-community/eslint-utils": "^4.8.0",
+-        "@eslint-community/regexpp": "^4.12.1",
+-        "@eslint/config-array": "^0.21.2",
+-        "@eslint/config-helpers": "^0.4.2",
+-        "@eslint/core": "^0.17.0",
+-        "@eslint/eslintrc": "^3.3.6",
+-        "@eslint/js": "9.39.5",
+-        "@eslint/plugin-kit": "^0.4.1",
++        "@eslint-community/regexpp": "^4.12.2",
++        "@eslint/config-array": "^0.23.5",
++        "@eslint/config-helpers": "^0.7.0",
++        "@eslint/core": "^1.2.1",
++        "@eslint/plugin-kit": "^0.7.3",
+         "@humanfs/node": "^0.16.6",
+         "@humanwhocodes/module-importer": "^1.0.1",
+         "@humanwhocodes/retry": "^0.4.2",
+         "@types/estree": "^1.0.6",
+         "ajv": "^6.14.0",
+-        "chalk": "^4.0.0",
+         "cross-spawn": "^7.0.6",
+         "debug": "^4.3.2",
+         "escape-string-regexp": "^4.0.0",
+-        "eslint-scope": "^8.4.0",
+-        "eslint-visitor-keys": "^4.2.1",
+-        "espree": "^10.4.0",
+-        "esquery": "^1.5.0",
++        "eslint-scope": "^9.1.2",
++        "eslint-visitor-keys": "^5.0.1",
++        "espree": "^11.2.0",
++        "esquery": "^1.7.0",
+         "esutils": "^2.0.2",
+         "fast-deep-equal": "^3.1.3",
+-        "file-entry-cache": "^8.0.0",
++        "file-entry-cache": "11.1.5 || >11.1.6 <12",
+         "find-up": "^5.0.0",
+         "glob-parent": "^6.0.2",
+         "ignore": "^5.2.0",
+         "imurmurhash": "^0.1.4",
+         "is-glob": "^4.0.0",
+         "json-stable-stringify-without-jsonify": "^1.0.1",
+-        "lodash.merge": "^4.6.2",
+-        "minimatch": "^3.1.5",
++        "minimatch": "^10.2.5",
+         "natural-compare": "^1.4.0",
+         "optionator": "^0.9.3"
+       },
+@@ -488,7 +733,7 @@
+         "eslint": "bin/eslint.js"
+       },
+       "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       },
+       "funding": {
+         "url": "https://eslint.org/donate"
+@@ -503,48 +748,50 @@
+       }
+     },
+     "node_modules/eslint-scope": {
+-      "version": "8.4.0",
+-      "resolved": "https://registry.npmjs.org/eslint-scope/-/eslint-scope-8.4.0.tgz",
+-      "integrity": "sha512-sNXOfKCn74rt8RICKMvJS7XKV/Xk9kA7DyJr8mJik3S7Cwgy3qlkkmyS2uQB3jiJg6VNdZd/pDBJu0nvG2NlTg==",
++      "version": "9.1.2",
++      "resolved": "https://registry.npmjs.org/eslint-scope/-/eslint-scope-9.1.2.tgz",
++      "integrity": "sha512-xS90H51cKw0jltxmvmHy2Iai1LIqrfbw57b79w/J7MfvDfkIkFZ+kj6zC3BjtUwh150HsSSdxXZcsuv72miDFQ==",
+       "dev": true,
+       "license": "BSD-2-Clause",
+       "dependencies": {
++        "@types/esrecurse": "^4.3.1",
++        "@types/estree": "^1.0.8",
+         "esrecurse": "^4.3.0",
+         "estraverse": "^5.2.0"
+       },
+       "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       },
+       "funding": {
+         "url": "https://opencollective.com/eslint"
+       }
+     },
+     "node_modules/eslint-visitor-keys": {
+-      "version": "4.2.1",
+-      "resolved": "https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-4.2.1.tgz",
+-      "integrity": "sha512-Uhdk5sfqcee/9H/rCOJikYz67o0a2Tw2hGRPOG2Y1R2dg7brRe1uG0yaNQDHu+TO/uQPF/5eCapvYSmHUjt7JQ==",
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-5.0.1.tgz",
++      "integrity": "sha512-tD40eHxA35h0PEIZNeIjkHoDR4YjjJp34biM0mDvplBe//mB+IHCqHDGV7pxF+7MklTvighcCPPZC7ynWyjdTA==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       },
+       "funding": {
+         "url": "https://opencollective.com/eslint"
+       }
+     },
+     "node_modules/espree": {
+-      "version": "10.4.0",
+-      "resolved": "https://registry.npmjs.org/espree/-/espree-10.4.0.tgz",
+-      "integrity": "sha512-j6PAQ2uUr79PZhBjP5C5fhl8e39FmRnOjsD5lGnWrFU8i2G776tBK7+nP8KuQUTTyAZUwfQqXAgrVH5MbH9CYQ==",
++      "version": "11.2.0",
++      "resolved": "https://registry.npmjs.org/espree/-/espree-11.2.0.tgz",
++      "integrity": "sha512-7p3DrVEIopW1B1avAGLuCSh1jubc01H2JHc8B4qqGblmg5gI9yumBgACjWo4JlIc04ufug4xJ3SQI8HkS/Rgzw==",
+       "dev": true,
+       "license": "BSD-2-Clause",
+       "dependencies": {
+-        "acorn": "^8.15.0",
++        "acorn": "^8.16.0",
+         "acorn-jsx": "^5.3.2",
+-        "eslint-visitor-keys": "^4.2.1"
+-      },
+-      "engines": {
+-        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++        "eslint-visitor-keys": "^5.0.1"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
+       },
+       "funding": {
+         "url": "https://opencollective.com/eslint"
+@@ -618,16 +865,13 @@
+       "license": "MIT"
+     },
+     "node_modules/file-entry-cache": {
+-      "version": "8.0.0",
+-      "resolved": "https://registry.npmjs.org/file-entry-cache/-/file-entry-cache-8.0.0.tgz",
+-      "integrity": "sha512-XXTUwCvisa5oacNGRP9SfNtYBNAMi+RPwBFmblZEF7N7swHYQS6/Zfk7SRwx4D5j3CH211YNRco1DEMNVfZCnQ==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "flat-cache": "^4.0.0"
+-      },
+-      "engines": {
+-        "node": ">=16.0.0"
++      "version": "11.1.5",
++      "resolved": "https://registry.npmjs.org/file-entry-cache/-/file-entry-cache-11.1.5.tgz",
++      "integrity": "sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "flat-cache": "^6.1.23"
+       }
+     },
+     "node_modules/find-up": {
+@@ -648,23 +892,21 @@
+       }
+     },
+     "node_modules/flat-cache": {
+-      "version": "4.0.1",
+-      "resolved": "https://registry.npmjs.org/flat-cache/-/flat-cache-4.0.1.tgz",
+-      "integrity": "sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "flatted": "^3.2.9",
+-        "keyv": "^4.5.4"
+-      },
+-      "engines": {
+-        "node": ">=16"
++      "version": "6.1.23",
++      "resolved": "https://registry.npmjs.org/flat-cache/-/flat-cache-6.1.23.tgz",
++      "integrity": "sha512-f++BY9pTk+983xK1FLzlLpmM0i0z+jHmx3QESGkURMXujQZz1k5wzwX6hjnQ8goaD0B+sYnDK1yZ6MTyZfUaqA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "cacheable": "^2.5.0",
++        "flatted": "^3.4.2",
++        "hookified": "^1.15.0"
+       }
+     },
+     "node_modules/flatted": {
+-      "version": "3.4.2",
+-      "resolved": "https://registry.npmjs.org/flatted/-/flatted-3.4.2.tgz",
+-      "integrity": "sha512-PjDse7RzhcPkIJwy5t7KPWQSZ9cAbzQXcafsetQoD7sOJRQlGikNbx7yZp2OotDnJyrDcbyRq3Ttb18iYOqkxA==",
++      "version": "3.4.4",
++      "resolved": "https://registry.npmjs.org/flatted/-/flatted-3.4.4.tgz",
++      "integrity": "sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==",
+       "dev": true,
+       "license": "ISC"
+     },
+@@ -694,14 +936,37 @@
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
+-    "node_modules/has-flag": {
+-      "version": "4.0.0",
+-      "resolved": "https://registry.npmjs.org/has-flag/-/has-flag-4.0.0.tgz",
+-      "integrity": "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=8"
++    "node_modules/hashery": {
++      "version": "1.5.1",
++      "resolved": "https://registry.npmjs.org/hashery/-/hashery-1.5.1.tgz",
++      "integrity": "sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hookified": "^1.15.0"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/hookified": {
++      "version": "1.15.1",
++      "resolved": "https://registry.npmjs.org/hookified/-/hookified-1.15.1.tgz",
++      "integrity": "sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/html-encoding-sniffer": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/html-encoding-sniffer/-/html-encoding-sniffer-6.0.0.tgz",
++      "integrity": "sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.6.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+       }
+     },
+     "node_modules/ignore": {
+@@ -714,23 +979,6 @@
+         "node": ">= 4"
+       }
+     },
+-    "node_modules/import-fresh": {
+-      "version": "3.3.1",
+-      "resolved": "https://registry.npmjs.org/import-fresh/-/import-fresh-3.3.1.tgz",
+-      "integrity": "sha512-TR3KfrTZTYLPB6jUjfx6MF9WcWrHL9su5TObK4ZkYgBdWKPOFoSoQIdEuTuR82pmtxH2spWG9h6etwfr1pLBqQ==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "parent-module": "^1.0.0",
+-        "resolve-from": "^4.0.0"
+-      },
+-      "engines": {
+-        "node": ">=6"
+-      },
+-      "funding": {
+-        "url": "https://github.com/sponsors/sindresorhus"
+-      }
+-    },
+     "node_modules/imurmurhash": {
+       "version": "0.1.4",
+       "resolved": "https://registry.npmjs.org/imurmurhash/-/imurmurhash-0.1.4.tgz",
+@@ -764,6 +1012,13 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/is-potential-custom-element-name": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/is-potential-custom-element-name/-/is-potential-custom-element-name-1.0.1.tgz",
++      "integrity": "sha512-bCYeRA2rVibKZd+s2625gGnGF/t7DSqDs4dP7CrLA1m7jKWz6pps0LpYLJN8Q64HtmPKJ1hrN3nzPNKFEKOUiQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/isexe": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/isexe/-/isexe-2.0.0.tgz",
+@@ -771,35 +1026,46 @@
+       "dev": true,
+       "license": "ISC"
+     },
+-    "node_modules/js-yaml": {
+-      "version": "4.3.1",
+-      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.1.tgz",
+-      "integrity": "sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==",
+-      "dev": true,
+-      "funding": [
+-        {
+-          "type": "github",
+-          "url": "https://github.com/sponsors/puzrin"
+-        },
+-        {
+-          "type": "github",
+-          "url": "https://github.com/sponsors/nodeca"
++    "node_modules/jsdom": {
++      "version": "30.0.1",
++      "resolved": "https://registry.npmjs.org/jsdom/-/jsdom-30.0.1.tgz",
++      "integrity": "sha512-52v7mUVUfNQVYYqE1lcdaymWL0njO7lTLUog6ZvW2U5KsbiLk/GnZlVJ+qx0xfNJZ6Gn+KSpPNE52vurbxZwrA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@asamuzakjp/css-color": "^6.0.5",
++        "@asamuzakjp/dom-selector": "^8.3.0",
++        "@bramus/specificity": "^2.4.2",
++        "@csstools/css-syntax-patches-for-csstree": "^1.1.7",
++        "@exodus/bytes": "^1.15.1",
++        "css-tree": "^3.2.1",
++        "data-urls": "^7.0.0",
++        "decimal.js": "^10.6.0",
++        "html-encoding-sniffer": "^6.0.0",
++        "is-potential-custom-element-name": "^1.0.1",
++        "lru-cache": "^11.5.2",
++        "parse5": "^8.0.1",
++        "saxes": "^6.0.0",
++        "symbol-tree": "^3.2.4",
++        "tough-cookie": "^6.0.2",
++        "undici": "^8.9.0",
++        "w3c-xmlserializer": "^5.0.0",
++        "webidl-conversions": "^8.0.1",
++        "whatwg-mimetype": "^5.0.0",
++        "whatwg-url": "^17.1.0",
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
++      },
++      "peerDependencies": {
++        "canvas": "^3.2.3"
++      },
++      "peerDependenciesMeta": {
++        "canvas": {
++          "optional": true
+         }
+-      ],
+-      "license": "MIT",
+-      "dependencies": {
+-        "argparse": "^2.0.1"
+-      },
+-      "bin": {
+-        "js-yaml": "bin/js-yaml.js"
+-      }
+-    },
+-    "node_modules/json-buffer": {
+-      "version": "3.0.1",
+-      "resolved": "https://registry.npmjs.org/json-buffer/-/json-buffer-3.0.1.tgz",
+-      "integrity": "sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==",
+-      "dev": true,
+-      "license": "MIT"
++      }
+     },
+     "node_modules/json-schema-traverse": {
+       "version": "0.4.1",
+@@ -816,13 +1082,13 @@
+       "license": "MIT"
+     },
+     "node_modules/keyv": {
+-      "version": "4.5.4",
+-      "resolved": "https://registry.npmjs.org/keyv/-/keyv-4.5.4.tgz",
+-      "integrity": "sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "json-buffer": "3.0.1"
++      "version": "5.6.0",
++      "resolved": "https://registry.npmjs.org/keyv/-/keyv-5.6.0.tgz",
++      "integrity": "sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@keyv/serialize": "^1.1.1"
+       }
+     },
+     "node_modules/levn": {
+@@ -855,24 +1121,37 @@
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
+-    "node_modules/lodash.merge": {
+-      "version": "4.6.2",
+-      "resolved": "https://registry.npmjs.org/lodash.merge/-/lodash.merge-4.6.2.tgz",
+-      "integrity": "sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==",
+-      "dev": true,
+-      "license": "MIT"
++    "node_modules/lru-cache": {
++      "version": "11.5.2",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
++      "integrity": "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
++    "node_modules/mdn-data": {
++      "version": "2.27.1",
++      "resolved": "https://registry.npmjs.org/mdn-data/-/mdn-data-2.27.1.tgz",
++      "integrity": "sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==",
++      "dev": true,
++      "license": "CC0-1.0"
+     },
+     "node_modules/minimatch": {
+-      "version": "3.1.5",
+-      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-3.1.5.tgz",
+-      "integrity": "sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w==",
+-      "dev": true,
+-      "license": "ISC",
+-      "dependencies": {
+-        "brace-expansion": "^1.1.7"
+-      },
+-      "engines": {
+-        "node": "*"
++      "version": "10.2.6",
++      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz",
++      "integrity": "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "dependencies": {
++        "brace-expansion": "^5.0.8"
++      },
++      "engines": {
++        "node": "18 || 20 || >=22"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/isaacs"
+       }
+     },
+     "node_modules/ms": {
+@@ -939,17 +1218,17 @@
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
+-    "node_modules/parent-module": {
+-      "version": "1.0.1",
+-      "resolved": "https://registry.npmjs.org/parent-module/-/parent-module-1.0.1.tgz",
+-      "integrity": "sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "callsites": "^3.0.0"
+-      },
+-      "engines": {
+-        "node": ">=6"
++    "node_modules/parse5": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/parse5/-/parse5-8.0.1.tgz",
++      "integrity": "sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "entities": "^8.0.0"
++      },
++      "funding": {
++        "url": "https://github.com/inikulin/parse5?sponsor=1"
+       }
+     },
+     "node_modules/path-exists": {
+@@ -1008,14 +1287,47 @@
+         "node": ">=6"
+       }
+     },
+-    "node_modules/resolve-from": {
+-      "version": "4.0.0",
+-      "resolved": "https://registry.npmjs.org/resolve-from/-/resolve-from-4.0.0.tgz",
+-      "integrity": "sha512-pb/MYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=4"
++    "node_modules/qified": {
++      "version": "0.10.1",
++      "resolved": "https://registry.npmjs.org/qified/-/qified-0.10.1.tgz",
++      "integrity": "sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hookified": "^2.1.1"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/qified/node_modules/hookified": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/hookified/-/hookified-2.2.0.tgz",
++      "integrity": "sha512-p/LgFzRN5FeoD3DLS6bkUapeye6E4SI6yJs6KetENd18S+FBthqYq2amJUWpt5z0EQwwHemidjY5OqJGEKm5uA==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/require-from-string": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
++      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/saxes": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/saxes/-/saxes-6.0.0.tgz",
++      "integrity": "sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "xmlchars": "^2.2.0"
++      },
++      "engines": {
++        "node": ">=v12.22.7"
+       }
+     },
+     "node_modules/shebang-command": {
+@@ -1041,30 +1353,67 @@
+         "node": ">=8"
+       }
+     },
+-    "node_modules/strip-json-comments": {
+-      "version": "3.1.1",
+-      "resolved": "https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-3.1.1.tgz",
+-      "integrity": "sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=8"
+-      },
+-      "funding": {
+-        "url": "https://github.com/sponsors/sindresorhus"
+-      }
+-    },
+-    "node_modules/supports-color": {
+-      "version": "7.2.0",
+-      "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-7.2.0.tgz",
+-      "integrity": "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==",
+-      "dev": true,
+-      "license": "MIT",
+-      "dependencies": {
+-        "has-flag": "^4.0.0"
+-      },
+-      "engines": {
+-        "node": ">=8"
++    "node_modules/source-map-js": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
++      "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/symbol-tree": {
++      "version": "3.2.4",
++      "resolved": "https://registry.npmjs.org/symbol-tree/-/symbol-tree-3.2.4.tgz",
++      "integrity": "sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/tldts": {
++      "version": "7.4.12",
++      "resolved": "https://registry.npmjs.org/tldts/-/tldts-7.4.12.tgz",
++      "integrity": "sha512-WylhSDKVeYnWXL3a+vKTaOxjnOeEGw938hImY8zoRWJjRRK/Jp1K+IihBzIONpUmW4e3WmXT6q5FW6vlESVZCA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tldts-core": "^7.4.12"
++      },
++      "bin": {
++        "tldts": "bin/cli.js"
++      }
++    },
++    "node_modules/tldts-core": {
++      "version": "7.4.12",
++      "resolved": "https://registry.npmjs.org/tldts-core/-/tldts-core-7.4.12.tgz",
++      "integrity": "sha512-nYNzS2WRf4QJmjzFFgAxLOBjyBxAGRbCy9PVBPaglcYyYajh40VBn+v5Ngr96ZMc7oM0+aCJdtQnNejvdBnXMQ==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/tough-cookie": {
++      "version": "6.0.2",
++      "resolved": "https://registry.npmjs.org/tough-cookie/-/tough-cookie-6.0.2.tgz",
++      "integrity": "sha512-exgYmnmL/sJpR3upZfXG5PoatXQii55xAiXGXzY+sROLZ/Y+SLcp9PgJNI9Vz37HpQ74WvDcLT8eqm+kV3FzrA==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "tldts": "^7.0.5"
++      },
++      "engines": {
++        "node": ">=16"
++      }
++    },
++    "node_modules/tr46": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/tr46/-/tr46-6.0.0.tgz",
++      "integrity": "sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "punycode": "^2.3.1"
++      },
++      "engines": {
++        "node": ">=20"
+       }
+     },
+     "node_modules/type-check": {
+@@ -1080,6 +1429,16 @@
+         "node": ">= 0.8.0"
+       }
+     },
++    "node_modules/undici": {
++      "version": "8.10.2",
++      "resolved": "https://registry.npmjs.org/undici/-/undici-8.10.2.tgz",
++      "integrity": "sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=22.19.0"
++      }
++    },
+     "node_modules/uri-js": {
+       "version": "4.4.1",
+       "resolved": "https://registry.npmjs.org/uri-js/-/uri-js-4.4.1.tgz",
+@@ -1090,6 +1449,54 @@
+         "punycode": "^2.1.0"
+       }
+     },
++    "node_modules/w3c-xmlserializer": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/w3c-xmlserializer/-/w3c-xmlserializer-5.0.0.tgz",
++      "integrity": "sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "xml-name-validator": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/webidl-conversions": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-8.0.1.tgz",
++      "integrity": "sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/whatwg-mimetype": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/whatwg-mimetype/-/whatwg-mimetype-5.0.0.tgz",
++      "integrity": "sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/whatwg-url": {
++      "version": "17.1.0",
++      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-17.1.0.tgz",
++      "integrity": "sha512-3GeworPmc2ZfEEHP7lEbUfBX/L75wdEsi0rLNhXcXxnoN5jyq0SL5gCy06SGW2cyTIZdTvWIDQNQoza++vKeaw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@exodus/bytes": "^1.15.1",
++        "tr46": "^6.0.0",
++        "webidl-conversions": "^8.0.1"
++      },
++      "engines": {
++        "node": "^22.14.0 || >=24.0.0"
++      }
++    },
+     "node_modules/which": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
+@@ -1116,6 +1523,23 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/xml-name-validator": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-5.0.0.tgz",
++      "integrity": "sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/xmlchars": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/xmlchars/-/xmlchars-2.2.0.tgz",
++      "integrity": "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/yocto-queue": {
+       "version": "0.1.0",
+       "resolved": "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz",
+--- a/package.json
++++ b/package.json
+@@ -1,21 +1,23 @@
+ {
+   "name": "xhelper",
+-  "version": "3.6.0",
++  "version": "3.6.1",
+   "private": true,
+   "description": "xHelper - Manifest V3 Chrome extension for X.com",
+   "engines": {
+-    "node": ">=18"
++    "node": "^24.15.0"
+   },
+   "scripts": {
++    "test": "node --test tests/*.test.cjs",
+     "lint": "eslint .",
+     "lint:fix": "eslint . --fix",
+     "format": "prettier --write .",
+     "format:check": "prettier --check ."
+   },
+   "devDependencies": {
+-    "eslint": "^9.23.0",
+-    "@eslint/js": "^9.23.0",
++    "@eslint/js": "^10.0.1",
++    "eslint": "^10.10.0",
+     "globals": "^15.14.0",
++    "jsdom": "^30.0.1",
+     "prettier": "^3.5.3"
+   }
+ }
+--- /dev/null
++++ b/tests/background.test.cjs
+@@ -0,0 +1,240 @@
++// Regression checks load the actual background script in node:vm.
++// No application endpoints or real chrome.downloads calls are reachable.
++const fs = require('node:fs');
++const vm = require('node:vm');
++const assert = require('node:assert/strict');
++const path = require('node:path');
++const source = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
++const test = require('node:test');
++function runtime(
++  fetchImpl = async () => {
++    throw Error('Unexpected stub fetch');
++  },
++  downloadImpl = async () => 1
++) {
++  const handlers = {},
++    badges = [],
++    downloads = [],
++    requests = [],
++    timers = [];
++  const ctx = vm.createContext({
++    URL,
++    AbortSignal,
++    Date,
++    console,
++    fetch: (...args) => {
++      requests.push(args);
++      return fetchImpl(...args);
++    },
++    setTimeout: (fn, delay) => {
++      timers.push({ fn, delay });
++      return timers.length;
++    },
++    chrome: {
++      action: {
++        setBadgeBackgroundColor: async () => {},
++        setBadgeText: async (value) => badges.push(value),
++        disable: async () => {},
++        onClicked: { addListener: (fn) => (handlers.clicked = fn) },
++      },
++      runtime: {
++        onInstalled: { addListener: (fn) => (handlers.installed = fn) },
++        onMessage: { addListener: (fn) => (handlers.message = fn) },
++      },
++      declarativeContent: {
++        onPageChanged: {
++          removeRules: (_, cb) => cb(),
++          addRules: (value) => (handlers.rules = value),
++        },
++        PageStateMatcher: function (value) {
++          Object.assign(this, value);
++        },
++        ShowAction: function () {},
++      },
++      downloads: {
++        download: (options) => {
++          downloads.push(options);
++          return downloadImpl(options);
++        },
++      },
++    },
++  });
++  vm.runInContext(source, ctx, { filename: 'background.js', timeout: 1000 });
++  return { ctx, handlers, badges, downloads, requests, timers };
++}
++function media(variants) {
++  return { type: 'video', video_info: { variants } };
++}
++function mp4(bitrate, resolution = '1280x720') {
++  return {
++    content_type: 'video/mp4',
++    bitrate,
++    url: 'https://video.twimg.com/ext_tw_video/vid/' + resolution + '/synthetic.mp4',
++  };
++}
++function payload(items = [media([mp4(10)])]) {
++  return { id_str: '1111111111', user: { screen_name: 'synthetic' }, mediaDetails: items };
++}
++const response = (value) => ({ ok: true, json: async () => value });
++
++test('BG-01 malformed request ID is rejected before fetch; unknown action ignored', async () => {
++  const r = runtime();
++  let reply;
++  assert.equal(
++    r.handlers.message({ action: 'download', id: 'short' }, { tab: { id: 1 } }, (x) => (reply = x)),
++    true
++  );
++  await new Promise(setImmediate);
++  assert.equal(reply.ok, false);
++  assert.equal(r.requests.length, 0);
++  assert.equal(
++    r.handlers.message({ action: 'unrelated' }, {}, () => {}),
++    false
++  );
++});
++test('BG-02 toolbar URL and post boundary parsing', () => {
++  const r = runtime();
++  for (const input of [
++    'https://example.invalid/user/status/1111111111',
++    'https://x.com/home',
++    'http://x.com/user/status/1111111111',
++  ]) {
++    assert.equal(r.ctx.tweetIdFromUrl(input), null);
++  }
++  assert.equal(
++    r.ctx.tweetIdFromUrl('https://x.com/synthetic/status/1111111111?view=1'),
++    '1111111111'
++  );
++});
++test('BG-03 variant ranking coerces bitrate and uses resolution tie break', () => {
++  const r = runtime();
++  const best = r.ctx.bestMp4Variant(
++    media([mp4('10', '640x360'), mp4(20, '640x360'), mp4('20', '1280x720')])
++  );
++  assert.equal(best.bitrate, 20);
++  assert.equal(best.resolution, '1280x720');
++});
++test('BG-04 defensive URL allowlist rejects non-HTTPS and other domains', () => {
++  const r = runtime();
++  const variants = [
++    {
++      content_type: 'video/mp4',
++      url: 'https://example.invalid/1280x720/synthetic.mp4',
++      bitrate: 999,
++    },
++    {
++      content_type: 'video/mp4',
++      url: 'http://video.twimg.com/1280x720/synthetic.mp4',
++      bitrate: 999,
++    },
++    mp4(1),
++  ];
++  assert.equal(r.ctx.bestMp4Variant(media(variants)).bitrate, 1);
++});
++test('BG-05 own media wins, then quote before reply parent', async () => {
++  const data = payload();
++  data.quoted_status = payload();
++  data.quoted_status.id_str = '2222222222';
++  data.parent = payload();
++  data.parent.id_str = '3333333333';
++  let r = runtime(async () => response(data));
++  assert.equal((await r.ctx.fetchTweetMetadata('1111111111')).tweetId, '1111111111');
++  data.mediaDetails = [];
++  assert.equal((await r.ctx.fetchTweetMetadata('1111111111')).tweetId, '2222222222');
++  data.quoted_status.mediaDetails = [];
++  assert.equal((await r.ctx.fetchTweetMetadata('1111111111')).tweetId, '3333333333');
++});
++test('BG-06 malformed filename metadata falls back to safe fields', async () => {
++  const data = payload();
++  data.id_str = 'invalid id';
++  data.user.screen_name = 'name with spaces';
++  const r = runtime(async () => response(data));
++  const metadata = await r.ctx.fetchTweetMetadata('1111111111');
++  assert.equal(
++    r.ctx.buildFilename(metadata, metadata.mediaItems[0], 0),
++    '@video_1111111111_1280x720.mp4'
++  );
++});
++test('BG-07 multi-video downloads start sequentially with unique suffixes', async () => {
++  let release;
++  const r = runtime(
++    async () => response(payload([media([mp4(10)]), media([mp4(20)])])),
++    () =>
++      r.downloads.length === 1 ? new Promise((resolve) => (release = resolve)) : Promise.resolve(2)
++  );
++  const promise = r.ctx.downloadTweetMedia('1111111111', true);
++  await new Promise(setImmediate);
++  assert.equal(r.downloads.length, 1);
++  release(1);
++  const result = await promise;
++  assert.equal(result.ok, true);
++  assert.equal(r.downloads.length, 2);
++  assert.match(r.downloads[0].filename, /_m1_/);
++  assert.match(r.downloads[1].filename, /_m2_/);
++  assert.ok(r.downloads.every((x) => x.saveAs && x.conflictAction === 'uniquify'));
++});
++test('BG-08 lookup error translations and response body cancellation', async () => {
++  let cancelled = false;
++  const r = runtime(async () => ({
++    ok: false,
++    status: 404,
++    body: {
++      cancel: async () => {
++        cancelled = true;
++      },
++    },
++  }));
++  await assert.rejects(r.ctx.fetchTweetMetadata('1111111111'), /could not be found/);
++  assert.ok(cancelled);
++  for (const name of ['TimeoutError', 'TypeError']) {
++    const err = Error('synthetic failure');
++    err.name = name;
++    const r = runtime(async () => {
++      throw err;
++    });
++    await assert.rejects(
++      r.ctx.fetchTweetMetadata('1111111111'),
++      name === 'TimeoutError' ? /Timed out/ : /Could not reach/
++    );
++  }
++  const bad = runtime(async () => ({
++    ok: true,
++    json: async () => {
++      throw SyntaxError();
++    },
++  }));
++  await assert.rejects(bad.ctx.fetchTweetMetadata('1111111111'), /invalid JSON/);
++});
++test('BG-09 toolbar failure and ad canary badges retain originating tab', async () => {
++  const r = runtime(async () => {
++    throw Error('offline');
++  });
++  r.handlers.clicked({ url: 'https://x.com/home', id: 12 });
++  r.handlers.clicked({ url: 'https://x.com/synthetic/status/1111111111', id: 13 });
++  r.handlers.message({ action: 'adMarkerRot' }, { tab: { id: 14 } }, () => {});
++  await new Promise(setImmediate);
++  assert.ok(r.badges.some((x) => x.text === '?' && x.tabId === 12));
++  assert.ok(r.badges.some((x) => x.text === '!' && x.tabId === 13));
++  assert.ok(r.badges.some((x) => x.text === 'AD' && x.tabId === 14));
++});
++test('BG-10 download rejection propagates; success acknowledges start only', async () => {
++  const r = runtime(
++    async () => response(payload()),
++    async () => {
++      throw Error('synthetic cancellation');
++    }
++  );
++  await assert.rejects(r.ctx.downloadTweetMedia('1111111111', true), /synthetic cancellation/);
++  assert.equal(r.downloads.length, 1);
++});
++test('BG-11 mixed exposed/non-MP4 media currently reports aggregate success', async () => {
++  const unsupported = {
++    content_type: 'application/x-mpegURL',
++    url: 'https://video.twimg.com/synthetic.m3u8',
++  };
++  const r = runtime(async () => response(payload([media([mp4(10)]), media([unsupported])])));
++  const result = await r.ctx.downloadTweetMedia('1111111111', false);
++  assert.equal(result.ok, true);
++  assert.equal(r.downloads.length, 1);
++  return 'Characterization only: 1 of 2 video items has an allowed MP4; unsupported item skipped without warning.';
++});
+--- /dev/null
++++ b/tests/content-fixture.cjs
+@@ -0,0 +1,139 @@
++const fs = require('node:fs');
++const path = require('node:path');
++const vm = require('node:vm');
++const { JSDOM } = require('jsdom');
++
++// Model tests deliberately do not load resources or use a real Chrome profile.
++function contentFixture(t) {
++  const dom = new JSDOM(
++    '<!doctype html><style>' +
++      fs.readFileSync(path.join(__dirname, '..', 'content.css'), 'utf8') +
++      '</style><main></main>',
++    { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://example.invalid/' }
++  );
++  t.after(() => dom.window.close());
++  const window = dom.window;
++  const document = window.document;
++  const messages = [];
++  const timers = new Map();
++  let now = 1_000_000;
++  let nextTimer = 0;
++  let clickHandler;
++  window.Date.now = () => now;
++  window.setTimeout = (fn, delay = 0) => {
++    const id = ++nextTimer;
++    timers.set(id, { fn, at: now + delay });
++    return id;
++  };
++  window.clearTimeout = (id) => timers.delete(id);
++  window.fetch =
++    window.XMLHttpRequest =
++    window.WebSocket =
++      () => {
++        throw new Error('Network is forbidden in synthetic tests');
++      };
++  // jsdom has no layout. This models only display:none ancestry for canary tests.
++  Object.defineProperty(window.HTMLElement.prototype, 'offsetParent', {
++    get() {
++      if (!this.isConnected) return null;
++      for (let element = this; element; element = element.parentElement) {
++        if (window.getComputedStyle(element).display === 'none') return null;
++      }
++      return this.parentElement;
++    },
++  });
++  window.chrome = {
++    runtime: {
++      sendMessage(message, callback) {
++        messages.push({ message, callback });
++        if (message.action === 'adMarkerRot') callback();
++      },
++    },
++  };
++  const addEventListener = document.addEventListener.bind(document);
++  document.addEventListener = (type, handler, options) => {
++    if (type === 'click') clickHandler = handler;
++    addEventListener(type, handler, options);
++  };
++  vm.runInContext(
++    fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8'),
++    dom.getInternalVMContext(),
++    { filename: 'content.js', timeout: 1_000 }
++  );
++  async function advance(ms = 250) {
++    await Promise.resolve();
++    const end = now + ms;
++    for (let steps = 0; steps < 1_000; steps++) {
++      const due = [...timers].filter(([, timer]) => timer.at <= end);
++      if (!due.length) {
++        now = end;
++        await Promise.resolve();
++        return;
++      }
++      due.sort((a, b) => a[1].at - b[1].at);
++      const [id, timer] = due[0];
++      now = timer.at;
++      timers.delete(id);
++      timer.fn();
++      await Promise.resolve();
++    }
++    throw new Error('Timer work did not settle within 1,000 callbacks');
++  }
++  function tweet(id, { bar = true, video = true } = {}) {
++    const block = document.createElement('article');
++    block.dataset.testid = 'tweet';
++    const header = document.createElement('header');
++    const link = document.createElement('a');
++    link.href = 'https://x.com/synthetic/status/' + id;
++    link.append(document.createElement('time'));
++    header.append(link);
++    block.append(header);
++    if (video) block.append(document.createElement('video'));
++    if (bar) block.append(actionBar());
++    return block;
++  }
++  function actionBar() {
++    const bar = document.createElement('div');
++    bar.setAttribute('role', 'group');
++    for (let i = 0; i < 4; i++) bar.append(document.createElement('button'));
++    return bar;
++  }
++  function adCell() {
++    const cell = document.createElement('div');
++    cell.dataset.testid = 'cellInnerDiv';
++    const block = document.createElement('article');
++    block.dataset.testid = 'tweet';
++    const label = document.createElement('span');
++    label.textContent = 'Ad';
++    block.append(label);
++    cell.append(block);
++    return cell;
++  }
++  return {
++    window,
++    document,
++    messages,
++    advance,
++    tweet,
++    actionBar,
++    adCell,
++    mount: (node) => document.querySelector('main').append(node),
++    click(button, { altKey = false, trusted = true } = {}) {
++      // Calls the captured handler; it does not establish native trusted input.
++      clickHandler({
++        isTrusted: trusted,
++        target: button,
++        altKey,
++        preventDefault() {},
++        stopPropagation() {},
++        stopImmediatePropagation() {},
++      });
++    },
++    hide(hidden) {
++      Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
++      document.dispatchEvent(new window.Event('visibilitychange'));
++    },
++  };
++}
++
++module.exports = { contentFixture };
+--- /dev/null
++++ b/tests/content.test.cjs
+@@ -0,0 +1,235 @@
++const test = require('node:test');
++const assert = require('node:assert/strict');
++const { contentFixture } = require('./content-fixture.cjs');
++
++test('late responses cannot settle a newer attempt after a timeout', async (t) => {
++  const f = contentFixture(t);
++  f.mount(f.tweet('1111111111'));
++  await f.advance();
++  const button = f.document.querySelector('.xvd');
++  f.click(button);
++  const first = f.messages.at(-1);
++  await f.advance(15_000);
++  assert.equal(button.title, 'Extension did not respond');
++  f.click(button);
++  const second = f.messages.at(-1);
++  first.callback({ ok: true });
++  assert.ok(button.classList.contains('xvd--busy'));
++  second.callback({ ok: false, err: 'Current request failed' });
++  assert.equal(button.title, 'Current request failed');
++  await f.advance(3_000);
++  assert.match(button.title, /^Download video/);
++});
++
++test('a timed-out reply is ignored without a retry; Save As has no UI deadline', async (t) => {
++  const f = contentFixture(t);
++  f.mount(f.tweet('1111111111'));
++  await f.advance();
++  const button = f.document.querySelector('.xvd');
++  f.click(button);
++  const first = f.messages.at(-1);
++  await f.advance(15_000);
++  first.callback({ ok: true });
++  assert.equal(button.title, 'Extension did not respond');
++  f.click(button, { altKey: true });
++  const save = f.messages.at(-1);
++  assert.equal(save.message.saveAs, true);
++  await f.advance(30_000);
++  assert.ok(button.classList.contains('xvd--busy'));
++  save.callback({ ok: true });
++  assert.equal(button.title, 'Save As opened');
++});
++
++test('retained post identity is reconciled on href changes and again at click time', async (t) => {
++  const f = contentFixture(t);
++  const block = f.tweet('1111111111');
++  f.mount(block);
++  await f.advance();
++  const button = block.querySelector('.xvd');
++  block.querySelector('a').href = 'https://x.com/synthetic/status/2222222222';
++  await f.advance();
++  f.click(button);
++  assert.equal(f.messages.at(-1).message.id, '2222222222');
++  const old = f.messages.at(-1);
++  block.querySelector('a').href = 'https://x.com/synthetic/status/3333333333';
++  // Click before MutationObserver delivery: a retained control must still be fresh.
++  f.click(button);
++  assert.equal(f.messages.at(-1).message.id, '3333333333');
++  old.callback({ ok: true });
++  assert.ok(button.classList.contains('xvd--busy'));
++  f.messages.at(-1).callback({ ok: false, err: 'New post failed' });
++  assert.equal(button.title, 'New post failed');
++});
++
++test('removing video removes its old actionable control and invalidates replies', async (t) => {
++  const f = contentFixture(t);
++  const block = f.tweet('1111111111');
++  f.mount(block);
++  await f.advance();
++  const button = block.querySelector('.xvd');
++  f.click(button);
++  const request = f.messages.at(-1);
++  block.querySelector('video').remove();
++  await f.advance();
++  assert.equal(block.querySelector('.xvd'), null);
++  request.callback({ ok: true });
++  f.click(button);
++  assert.equal(f.messages.length, 1);
++});
++
++for (const innerFirst of [false, true]) {
++  test(
++    'partial nested action bars retain correct ownership; inner first: ' + innerFirst,
++    async (t) => {
++      const f = contentFixture(t);
++      const outer = f.tweet('1111111111', { bar: false, video: false });
++      const inner = f.tweet('2222222222');
++      if (innerFirst) {
++        f.mount(outer);
++        await f.advance();
++        outer.append(inner);
++      } else {
++        outer.append(inner);
++        f.mount(outer);
++      }
++      await f.advance();
++      for (let n = 0; n < 3; n++) {
++        outer.append(f.document.createElement('span'));
++        await f.advance();
++      }
++      assert.equal(inner.querySelectorAll('.xvd').length, 1);
++      f.click(inner.querySelector('.xvd'));
++      assert.equal(f.messages.at(-1).message.id, '2222222222');
++      f.messages.at(-1).callback({ ok: true });
++      const bar = f.actionBar();
++      outer.append(bar);
++      await f.advance();
++      assert.equal(bar.querySelectorAll('.xvd').length, 1);
++      assert.equal(inner.querySelectorAll('.xvd').length, 1);
++      f.click(bar.querySelector('.xvd'));
++      assert.equal(f.messages.at(-1).message.id, '1111111111');
++    }
++  );
++}
++
++test('an outer post without its own permalink waits instead of borrowing its quote ID', async (t) => {
++  const f = contentFixture(t);
++  const outer = f.tweet('1111111111', { video: false });
++  outer.querySelector('header').remove();
++  const inner = f.tweet('2222222222');
++  outer.prepend(inner);
++  f.mount(outer);
++  await f.advance();
++  const outerBar = outer.lastElementChild;
++  assert.equal(outerBar.querySelector('.xvd'), null);
++  outer.prepend(f.tweet('1111111111').querySelector('header'));
++  await f.advance();
++  f.click(outerBar.querySelector('.xvd'));
++  assert.equal(f.messages.at(-1).message.id, '1111111111');
++});
++
++test('fallback-hidden ad cells reveal organic replacements while preserving host styles', async (t) => {
++  const f = contentFixture(t);
++  await f.advance(5_000);
++  const cell = f.adCell();
++  cell.style.display = 'flex';
++  f.mount(cell);
++  await f.advance();
++  assert.equal(f.window.getComputedStyle(cell).display, 'none');
++  cell.replaceChildren(f.tweet('2222222222'));
++  await f.advance();
++  assert.equal(f.window.getComputedStyle(cell).display, 'flex');
++  assert.equal(cell.style.display, 'flex');
++
++  const other = f.adCell();
++  f.mount(other);
++  await f.advance(5_000);
++  // The canary is opportunistic: a mutation triggers the next due scan.
++  other.append(f.document.createElement('span'));
++  await f.advance();
++  assert.equal(f.window.getComputedStyle(other).display, 'none');
++  other.style.display = 'none';
++  other.replaceChildren(f.tweet('3333333333'));
++  await f.advance();
++  assert.equal(f.window.getComputedStyle(other).display, 'none');
++  assert.equal(other.style.display, 'none');
++});
++
++test('fallback hiding reconciles text-only reuse even before the next canary scan', async (t) => {
++  const f = contentFixture(t);
++  await f.advance(5_000);
++  const cell = f.adCell();
++  f.mount(cell);
++  await f.advance();
++  assert.equal(f.window.getComputedStyle(cell).display, 'none');
++  cell.querySelector('span').firstChild.data = 'Organic author';
++  await f.advance();
++  assert.notEqual(f.window.getComputedStyle(cell).display, 'none');
++
++  const next = f.adCell();
++  f.mount(next);
++  await f.advance(5_000);
++  next.append(f.document.createElement('span'));
++  await f.advance();
++  assert.equal(f.window.getComputedStyle(next).display, 'none');
++  next.replaceChildren(f.document.createTextNode('Organic non-post content'));
++  await f.advance();
++  assert.notEqual(f.window.getComputedStyle(next).display, 'none');
++});
++
++test('batch discovery, removed control recovery and visibility resume preserve one button', async (t) => {
++  const f = contentFixture(t);
++  const fragment = f.document.createDocumentFragment();
++  for (const id of ['1111111111', '2222222222', '3333333333']) fragment.append(f.tweet(id));
++  f.mount(fragment);
++  await f.advance();
++  assert.equal(f.document.querySelectorAll('.xvd').length, 3);
++  f.document.querySelector('.xvd').remove();
++  await f.advance();
++  assert.equal(f.document.querySelectorAll('.xvd').length, 3);
++  f.hide(true);
++  f.mount(f.tweet('4444444444'));
++  await f.advance();
++  assert.equal(f.document.querySelectorAll('.xvd').length, 3);
++  f.hide(false);
++  await f.advance();
++  assert.equal(f.document.querySelectorAll('.xvd').length, 4);
++});
++
++test('page-owned classes and untrusted clicks are ignored; busy clicks do not duplicate requests', async (t) => {
++  const f = contentFixture(t);
++  const block = f.tweet('1111111111');
++  const foreign = f.document.createElement('button');
++  foreign.className = 'xvd';
++  block.append(foreign);
++  f.mount(block);
++  await f.advance();
++  assert.equal(block.querySelectorAll('.xvd').length, 2);
++  const button = block.querySelector('[role=group] .xvd');
++  assert.equal(button.tagName, 'BUTTON');
++  assert.match(button.getAttribute('aria-label'), /Download video/);
++  f.click(foreign);
++  f.click(button, { trusted: false });
++  assert.equal(f.messages.length, 0);
++  f.click(button);
++  f.click(button);
++  assert.equal(f.messages.length, 1);
++});
++
++test('CSS hides marked ads without hiding an organic sidebar sibling', async (t) => {
++  const f = contentFixture(t);
++  const cell = f.adCell();
++  cell.firstElementChild.dataset.testid = 'placementTracking';
++  const sidebar = f.document.createElement('aside');
++  sidebar.dataset.testid = 'sidebarColumn';
++  const ad = f.document.createElement('div');
++  ad.dataset.testid = 'placementTracking';
++  const organic = f.document.createElement('div');
++  sidebar.append(ad, organic);
++  f.mount(cell);
++  f.mount(sidebar);
++  await f.advance();
++  assert.equal(f.window.getComputedStyle(cell).display, 'none');
++  assert.equal(f.window.getComputedStyle(ad).display, 'none');
++  assert.notEqual(f.window.getComputedStyle(organic).display, 'none');
++});

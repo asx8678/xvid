@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "chromium",
+    "--headless",
+    "--no-sandbox",
+    "--no-zygote",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--no-first-run",
+    "--disable-extensions",
+    "--host-resolver-rules=MAP * ~NOTFOUND",
+    "--proxy-server=http://127.0.0.1:9",
+    "--proxy-bypass-list=<-loopback>",
+    "--user-data-dir=/tmp/xvid-audit-tools-30nna45s/chromium-smoke-vmda7nq4",
+    "--timeout=5000",
+    "--dump-dom",
+    "about:blank"
+  ],
+  "status": "timed out",
+  "exit_code": 124,
+  "stdout": "",
+  "stderr": "[402644:402644:0908/012247.969951:ERROR:components/dbus/xdg/request.cc:173] Request ended (non-user cancelled).\n[402644:402644:0908/012247.978525:ERROR:chrome/browser/component_updater/optimization_guide_on_device_model_installer.cc:597] Failed to update on-device model component with error 5\n"
+}

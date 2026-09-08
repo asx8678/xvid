@@ -7,9 +7,12 @@ Thank you for considering contributing to xHelper!
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run `npm run lint` and `npm run format:check`
-5. Verify manually: load the unpacked extension and download from a video
-   post, a multi-video post, and a quote of a video post
+4. Use Node.js 24 LTS (24.15+) and `npm ci --ignore-scripts`, then run
+   `npm test`, `npm run lint`, and `npm run format:check`
+5. Verify manually in a disposable browser profile: reload both the extension
+   and its tab, then check single/multi-video posts, nested quotes, Save As and
+   cancellation, retry feedback, post reuse, and ad-to-organic cell replacement.
+   Synthetic tests do not establish native browser or current-X compatibility.
 6. Submit a Pull Request
 
 ## Guidelines

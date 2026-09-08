@@ -51,6 +51,7 @@
    Timeline: hide the whole virtualized cell. Sidebar: hide only the marker
    itself — hiding its enclosing module would take out organic entries too. */
 div[data-testid='cellInnerDiv']:has([data-testid='placementTracking']),
+div[data-testid='cellInnerDiv'].xvd-hidden-ad,
 [data-testid='sidebarColumn'] [data-testid='placementTracking'] {
   display: none !important;
 }

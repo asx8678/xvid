@@ -1,0 +1,77 @@
+[
+  {
+    "path": ".github/workflows/lint.yml",
+    "sha256": "50e8b43c10026aba3f2bc1c2ee056dbdd75b35918398df6bc611f20827a1e873",
+    "bytes": 386
+  },
+  {
+    "path": ".prettierignore",
+    "sha256": "1067ba1cdcb7531ac2911666ee1c7965c6088a9523517028b41eb746f1b38c34",
+    "bytes": 32
+  },
+  {
+    "path": "CHANGELOG.md",
+    "sha256": "f7b65416d3758a4249fdc518286edb3a4af4884735f72f3aab711f1437890822",
+    "bytes": 8533
+  },
+  {
+    "path": "CLAUDE.md",
+    "sha256": "747cb0897133337b0d71905ad918bcf12a9e58eed31950404f9d477ba20beda3",
+    "bytes": 3589
+  },
+  {
+    "path": "CONTRIBUTING.md",
+    "sha256": "258b14208355c1f547786c10d00f7d0e6c3716d0dddfc6a94e7e2667dd48c987",
+    "bytes": 885
+  },
+  {
+    "path": "README.md",
+    "sha256": "35111fde8e3f1d298984453611411b77e773f864d5e820c485535a7864065adf",
+    "bytes": 2946
+  },
+  {
+    "path": "content.css",
+    "sha256": "55c578c461b1ef530075f91d4bf0c0b2d12942b7689f1f0bdcf24ddfb8b19ade",
+    "bytes": 1298
+  },
+  {
+    "path": "content.js",
+    "sha256": "17daa5c2025fdbccf497e8112302aa5776781a689c2decc37b883f0509ae6e03",
+    "bytes": 10665
+  },
+  {
+    "path": "eslint.config.mjs",
+    "sha256": "531e9837a4c8d54674868c5e14236d5188b86786021f135710023adacec76ca1",
+    "bytes": 735
+  },
+  {
+    "path": "manifest.json",
+    "sha256": "c599f35fd3dc0515c00ce13f5a6f878ded41b8df99aa0a69b77d65f3405a6ea8",
+    "bytes": 988
+  },
+  {
+    "path": "package-lock.json",
+    "sha256": "35f48679384764950c94b39d24f7c1e6abb38270abe39078856946f6c0f2cc23",
+    "bytes": 54643
+  },
+  {
+    "path": "package.json",
+    "sha256": "fa5ecc99705764d559857e2a2a181992f8a690ffe9f57cc3c5ba4921123c8b31",
+    "bytes": 535
+  },
+  {
+    "path": "tests/background.test.cjs",
+    "sha256": "1e6c1709bb31f543f39d57762392534e8c43b9c61673b38971658df35bd3e940",
+    "bytes": 8338
+  },
+  {
+    "path": "tests/content-fixture.cjs",
+    "sha256": "939e384fd9e70a19e627e8d1ab8e9ee14f2e6f9b8bce3b652f6caef919d5e279",
+    "bytes": 4514
+  },
+  {
+    "path": "tests/content.test.cjs",
+    "sha256": "3ec203d22247de94c716da635374dc69eac0b08a97e91e0fb548607511c79912",
+    "bytes": 8821
+  }
+]
