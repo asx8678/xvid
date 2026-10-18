@@ -1,68 +1,59 @@
 # xHelper
 
-A local, privacy-focused Chrome/Chromium Manifest V3 extension that helps
-you use X on your terms: it adds a download button to videos and hides
-promoted posts. Deliberately minimal: no popup, no settings, no idle polling —
-it always downloads the highest-quality MP4 the post exposes, and it is
-active on x.com only (the toolbar icon stays greyed out everywhere else).
-
-> Formerly "X Video Downloader" (xvid); briefly "Distill" — renamed in
-> 3.3.1. Not related to the similarly named Android malware family.
+A minimal Chrome/Chromium Manifest V3 extension that adds a download button
+to videos on x.com. It always saves the highest-quality MP4 the post exposes.
+No popup, no settings, and no background work while you browse.
 
 ## Use
 
-- **Inline button** — posts with video get a download icon in the action bar.
-  Click it to download the best MP4. Alt/Option-click opens a Save As dialog.
-- **Toolbar icon** — on an open post page, clicking the extension icon
-  downloads that post's video. The icon badge flashes `?` if the page isn't a
-  post and `!` if the lookup fails.
+- Point at a post with a video (or let the video start playing) and a
+  download icon appears in its action bar. Click it to save the best MP4;
+  Alt/Option-click opens Save As.
+- The icon turns green when the download starts and red on failure — hover it
+  for the reason.
 - Multi-video posts download every video (`_m1`, `_m2`, … filename suffixes).
-- Quote posts and replies without their own media download the quoted/parent
-  video.
-- **Ad hiding** — promoted posts in the timeline and sidebar are hidden via
-  a pure-CSS rule. A built-in canary watches for X renaming its ad marker:
-  labeled ads that slip past the CSS rule are hidden by a JS fallback and
-  the toolbar badge flashes "AD" — that's the signal to refresh the
-  selector in `content.css`.
+- Quotes and replies without their own video download the quoted or parent
+  post's video.
 
 Filenames look like `@user_1234567890_1280x720.mp4`.
 
-## Install locally
+## How it stays light
+
+- The content script has no MutationObserver, timers or page scans. It only
+  reacts when the pointer or keyboard focus enters a post, or a video starts
+  playing, and then checks just that post.
+- The tweet ID is read when you click. The service worker sleeps until then,
+  looks the post up through X's public embed endpoint, and hands the MP4 to
+  Chrome's downloads.
+- Nothing runs on other sites. Permissions: `downloads`, plus the lookup host
+  `cdn.syndication.twimg.com`.
+
+## Install
 
 1. Open `chrome://extensions` (or the equivalent in Edge/Brave).
 2. Enable **Developer mode**.
 3. Click **Load unpacked** and select this folder.
 
+After reloading or updating the extension, also reload open x.com tabs.
+
 ## Development
 
-The extension is three files (`background.js`, `content.js`, `content.css`)
-plus the manifest — no build step, no runtime dependencies. Development uses
-Node.js 24 LTS (24.15 or newer within the 24.x line) and npm:
+No build step and no runtime dependencies. Lint and format checks use
+Node.js 24 LTS (24.15 or newer within 24.x):
 
 ```bash
 npm ci --ignore-scripts
-npm test
 npm run lint
 npm run format:check
 ```
 
-Tests use Node's built-in runner, synthetic metadata, and a jsdom model with
-controlled timers. They make no network requests or real downloads. The DOM
-model does not provide browser layout, native trusted input, or extension APIs.
+There are no automated tests. Check changes by hand on x.com: a video post,
+a GIF, a multi-video post, a quote of a video, Alt/Option-click Save As (and
+cancelling it), and a retry after a failure.
 
-Also verify changes in a disposable browser profile: reload the unpacked
-extension and its X tab, then check a video post, a multi-video post, and a
-quote. Check Alt/Option-click Save As and cancellation, retry feedback, scrolling
-through reused posts, and ad-to-organic cell replacement. Native browser and
-current-X compatibility require this separate check.
+## Limitations
 
-Contributions are welcome — see `CONTRIBUTING.md`. Release history lives in
-`CHANGELOG.md`.
-
-## Notes & limitations
-
-- Only downloads video/GIF MP4 variants that X/Twitter exposes through its
-  embeddable metadata endpoint. Private, restricted, deleted, DRM-protected,
-  or non-video posts may not expose downloadable media.
-- X frequently updates their UI — the inline button may occasionally break
-  until the DOM selectors are updated.
+- Only video/GIF MP4s exposed by X's embed metadata endpoint can be saved.
+  Private, restricted, deleted or DRM-protected posts may not expose them.
+- X changes its markup often. If the button stops appearing, update the
+  selectors at the top of `content.js`.

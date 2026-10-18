@@ -2,8 +2,7 @@
 .DS_Store
 Thumbs.db
 
-# Build output
-dist/
+# Packaged extension
 *.zip
 
 # Dependencies
@@ -16,21 +15,9 @@ node_modules/
 *.swo
 *~
 
-# Environment
-.env
-.env.local
-.env.*.local
-
-# AI / Agent tooling
+# Local agent state
 .claude/
-.beads/
 .pi/
 
-# Test artifacts
-coverage/
-.vitest-cache/
-*.log
-
 # Misc
-*.bak
-*.tmp
+*.log

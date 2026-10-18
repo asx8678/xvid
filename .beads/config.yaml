@@ -1,5 +1,0 @@
-# Beads Configuration File
-issue-prefix: "x"
-no-db: true
-
-sync.remote: "git+ssh://git@github.com/asx8678/xvid.git"

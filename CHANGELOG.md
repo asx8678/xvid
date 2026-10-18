@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.0.0
+
+Video download only, and no work while you browse.
+
+- **No page watching.** The MutationObserver, its sweep timer and hidden-tab
+  handling are gone. A video post gets its button when the pointer or
+  keyboard focus enters it, or when its video starts playing, and only that
+  post is checked. Scrolling and live page updates trigger no extension work.
+- The tweet ID is read when the button is clicked, so reused post markup can
+  never send a stale ID.
+- Clicks are ignored while a download is starting. This replaces the
+  15-second "Extension did not respond" deadline and its per-request
+  bookkeeping; the background lookup still times out after 12 seconds.
+- **Removed ad hiding** — the CSS rule, the JavaScript ad-marker fallback and
+  its `AD` badge.
+- **Removed the toolbar-icon download** and its `?`/`!` badges; the inline
+  button also appears on post pages. Permissions shrink to `downloads` plus
+  the lookup host: `declarativeContent` and the `x.com` host permission are
+  gone (the content script still runs on x.com).
+- Kept: highest-quality MP4, quoted/parent-post fallback, multi-video
+  downloads, Alt/Option-click Save As and filenames.
+- Repo: removed the test suite, beads issue tracking, audit artifacts,
+  `AGENTS.md` and `CONTRIBUTING.md`. CI runs lint and format checks, and a
+  vulnerable transitive dev package (`brace-expansion`) is patched.
+
 ## 3.6.1
 
 - Late download responses cannot overwrite a newer attempt's feedback.

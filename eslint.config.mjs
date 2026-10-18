@@ -3,16 +3,9 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['dist/', 'node_modules/', 'coverage/', '.pi/', 'audit-output/'],
+    ignores: ['.pi/'],
   },
   js.configs.recommended,
-  {
-    files: ['tests/**/*.cjs'],
-    languageOptions: {
-      globals: globals.node,
-      sourceType: 'commonjs',
-    },
-  },
   {
     files: ['background.js', 'content.js'],
     languageOptions: {

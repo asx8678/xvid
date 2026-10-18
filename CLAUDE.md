@@ -1,91 +1,43 @@
 # Project Instructions for AI Agents
 
-This file provides instructions and context for AI coding agents working on this project.
+xHelper is a Manifest V3 Chrome extension that adds a download button to
+videos on x.com. Downloading videos is its only job — keep it that way, and
+keep it doing no work while the user browses.
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
-
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd dolt push
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-<!-- END BEADS INTEGRATION -->
-
-## Build & Test
+## Build & Check
 
 There is no build step — the repo root loads directly as an unpacked
-extension (`chrome://extensions` → Developer mode → Load unpacked). There is a
-synthetic Node/jsdom test suite. It covers metadata and DOM/request ownership
-without network access or real downloads. Also verify browser-specific changes
-manually in a disposable profile; see README.md.
+extension (`chrome://extensions` → Developer mode → Load unpacked). There are
+no automated tests; verify changes manually on x.com (see README.md).
 
 ```bash
 npm ci --ignore-scripts # Node.js 24 LTS, >=24.15 within 24.x; dev deps only
-npm test             # Node test runner and synthetic DOM model
 npm run lint         # eslint .
 npm run format:check # prettier --check .
 ```
 
 ## Architecture Overview
 
-Manifest V3 Chrome extension for x.com ("xHelper"), no runtime dependencies:
+No runtime dependencies:
 
-- `manifest.json` — MV3 manifest; minimal permissions (`downloads`,
-  `declarativeContent`, x.com + cdn.syndication.twimg.com hosts).
-- `content.js` — runs in the ISOLATED world on x.com. A throttled
-  MutationObserver queues only affected tweet blocks for download-button
-  injection; an infrequent ad-marker canary backs up the CSS ad hiding.
-- `content.css` — button styling plus the pure-CSS promoted-post hiding
-  (X's `placementTracking` marker; first place to check when ads reappear).
-- `background.js` — service worker. Resolves tweets via the syndication
-  API, picks the best MP4 variant, and downloads via `chrome.downloads`.
+- `manifest.json` — MV3 manifest; minimal permissions (`downloads`, plus the
+  `cdn.syndication.twimg.com` host: its CORS only allows X's own embed
+  origin, so the lookup needs it).
+- `content.js` — runs in the ISOLATED world on x.com. No MutationObserver,
+  timers or scans: a video post gets its button when the pointer or keyboard
+  focus enters it or its video starts playing. The tweet ID is read on click.
+- `content.css` — download button styling.
+- `background.js` — service worker. Resolves the post via the syndication API
+  (falling back to the quoted, then parent post), picks the best MP4 variant,
+  and downloads via `chrome.downloads`.
 
 ## Conventions & Patterns
 
 - Every release bumps the version in `manifest.json` and `package.json` and
   adds a `CHANGELOG.md` entry.
-- Commit style: `type: vX.Y.Z — summary (bd-issue-id)`.
+- Commit style: `type: vX.Y.Z — summary`.
+- Finished work is committed and pushed to `origin/main` once lint and format
+  checks pass.
 - No runtime dependencies and no new permissions without strong
   justification; the minimal permission set is a feature.
 - X.com DOM selectors are fragile by nature — they live at the top of

@@ -9,36 +9,8 @@ const LOOKUP_ERRORS = {
   429: 'Rate limited by X/Twitter. Wait a moment and try again.',
 };
 
-void chrome.action.setBadgeBackgroundColor({ color: '#f4212e' });
-
-// Grey out the toolbar icon everywhere except x.com. The browser evaluates
-// these declarative rules natively — no extension code runs on other sites.
-chrome.runtime.onInstalled.addListener(() => {
-  void chrome.action.disable();
-  chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
-    chrome.declarativeContent.onPageChanged.addRules([
-      {
-        conditions: [
-          new chrome.declarativeContent.PageStateMatcher({
-            pageUrl: { hostEquals: 'x.com', schemes: ['https'] },
-          }),
-          new chrome.declarativeContent.PageStateMatcher({
-            pageUrl: { hostSuffix: '.x.com', schemes: ['https'] },
-          }),
-        ],
-        actions: [new chrome.declarativeContent.ShowAction()],
-      },
-    ]);
-  });
-});
-
-chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (msg?.action === 'adMarkerRot') {
-    // Content-script canary: ads slipped past the CSS rule — the marker in
-    // content.css needs refreshing.
-    flashBadge('AD', sender.tab?.id);
-    return false;
-  }
+// The worker's only event: a download button click. It sleeps otherwise.
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.action !== 'download') return false;
 
   const tweetId = String(msg.id ?? '');
@@ -51,24 +23,6 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     .catch((err) => reply({ ok: false, err: err?.message || 'Unknown error' }));
   return true;
 });
-
-// No popup: clicking the toolbar icon downloads the video of the open post.
-// Chrome's download shelf is the success feedback; a brief badge flags failure.
-chrome.action.onClicked.addListener((tab) => {
-  const tweetId = tweetIdFromUrl(tab?.url);
-  if (!tweetId) {
-    flashBadge('?', tab?.id);
-    return;
-  }
-  downloadTweetMedia(tweetId, false).catch(() => flashBadge('!', tab?.id));
-});
-
-function tweetIdFromUrl(url) {
-  if (typeof url !== 'string' || !/^https:\/\/(?:[\w-]+\.)?x\.com\//i.test(url)) {
-    return null;
-  }
-  return url.match(/\/status(?:es)?\/(\d{5,25})(?:[/?#]|$)/)?.[1] ?? null;
-}
 
 async function downloadTweetMedia(tweetId, saveAs) {
   const metadata = await fetchTweetMetadata(tweetId);
@@ -89,6 +43,7 @@ async function downloadTweetMedia(tweetId, saveAs) {
 async function fetchTweetMetadata(tweetId) {
   let response;
   try {
+    // The endpoint requires a token parameter but accepts any value.
     response = await fetch(
       `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&token=${Date.now()}`,
       { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), cache: 'no-store' }
@@ -113,23 +68,13 @@ async function fetchTweetMetadata(tweetId) {
     throw new Error('X/Twitter returned invalid JSON for that post.');
   }
 
-  // Prefer top-level media; fall back to the quoted tweet, then the reply
-  // parent, so a button on a media-less quote/reply still downloads the
-  // referenced video. Quoted wins: it's the post visibly embedded in the cell.
-  let source = data;
-  let rawMedia = videoMediaDetails(data);
-  if (!rawMedia.length) {
-    for (const candidate of [data?.quoted_status, data?.parent]) {
-      if (!candidate || typeof candidate !== 'object') continue;
-      const fallbackMedia = videoMediaDetails(candidate);
-      if (fallbackMedia.length) {
-        source = candidate;
-        rawMedia = fallbackMedia;
-        break;
-      }
-    }
-  }
-
+  // Prefer the post's own video, then the quoted post's (it is the one visibly
+  // embedded), then the reply parent's, so a button on a media-less quote or
+  // reply still downloads the referenced video.
+  const source =
+    [data, data?.quoted_status, data?.parent].find((node) => videoMediaDetails(node).length) ??
+    data;
+  const rawMedia = videoMediaDetails(source);
   const mediaItems = rawMedia.map(bestMp4Variant).filter(Boolean);
   if (!mediaItems.length) {
     throw new Error(
@@ -139,14 +84,13 @@ async function fetchTweetMetadata(tweetId) {
     );
   }
 
+  // The API's ID and screen name land in the download filename, so trust them
+  // only when they look valid. Screen names are \w-only, so they are
+  // filesystem-safe as-is; the length cap is generous vs. X's 15-char limit.
+  const sourceId = String(source?.id_str ?? '');
   const screenName = source?.user?.screen_name;
-  // The API's ID lands in the download filename, so trust it only when it
-  // looks like a tweet ID; otherwise keep the already-validated request ID.
-  const sourceId = String(source?.id_str || source?.id || '');
   return {
     tweetId: TWEET_ID_RE.test(sourceId) ? sourceId : tweetId,
-    // Screen names are \w-only, so they are filesystem-safe as-is; the
-    // length cap is filename hygiene, generous vs. X's 15-char limit.
     screenName:
       typeof screenName === 'string' && /^\w{1,30}$/.test(screenName) ? screenName : 'video',
     mediaItems,
@@ -154,12 +98,9 @@ async function fetchTweetMetadata(tweetId) {
 }
 
 function videoMediaDetails(node) {
-  const details = Array.isArray(node?.mediaDetails)
-    ? node.mediaDetails
-    : Array.isArray(node?.media_details)
-      ? node.media_details
-      : [];
-  return details.filter((entry) => VIDEO_TYPES.has(entry?.type));
+  return Array.isArray(node?.mediaDetails)
+    ? node.mediaDetails.filter((entry) => VIDEO_TYPES.has(entry?.type))
+    : [];
 }
 
 function bestMp4Variant(media) {
@@ -178,7 +119,7 @@ function bestMp4Variant(media) {
 
     // The API sometimes serves bitrates as strings; Number() coerces both.
     const bitrate = Number(variant.bitrate) > 0 ? Number(variant.bitrate) : 0;
-    const resolution = (parsed.pathname.match(/\/(\d+x\d+)\//) || [])[1] || '';
+    const resolution = parsed.pathname.match(/\/(\d+x\d+)\//)?.[1] || '';
     const [w, h] = resolution.split('x');
     const area = (Number(w) || 0) * (Number(h) || 0);
 
@@ -195,11 +136,4 @@ function buildFilename(metadata, item, index) {
   if (metadata.mediaItems.length > 1) parts.push(`m${index + 1}`);
   if (item.resolution) parts.push(item.resolution);
   return `${parts.join('_')}.mp4`;
-}
-
-// tabId scopes the badge to the originating tab (omitting it would flash
-// every window); the catch covers the tab closing before the reset fires.
-function flashBadge(text, tabId) {
-  chrome.action.setBadgeText({ text, tabId }).catch(() => {});
-  setTimeout(() => chrome.action.setBadgeText({ text: '', tabId }).catch(() => {}), 3000);
 }

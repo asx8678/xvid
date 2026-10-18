@@ -1,8 +1,0 @@
-{
-  "source": "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk",
-  "retrieved_utc": "2026-09-07T23:17:59.330528+00:00",
-  "method": "npm registry bulk advisory API; only public package names and versions, no root metadata or source",
-  "package_names": 86,
-  "installed_entries": 88,
-  "advisories": {}
-}
