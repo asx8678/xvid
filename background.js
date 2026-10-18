@@ -70,10 +70,12 @@ async function fetchTweetMetadata(tweetId) {
 
   // Prefer the post's own video, then the quoted post's (it is the one visibly
   // embedded), then the reply parent's, so a button on a media-less quote or
-  // reply still downloads the referenced video.
+  // reply still downloads the referenced video. The API names the quoted post
+  // quoted_tweet; quoted_status is its older name.
   const source =
-    [data, data?.quoted_status, data?.parent].find((node) => videoMediaDetails(node).length) ??
-    data;
+    [data, data?.quoted_tweet, data?.quoted_status, data?.parent].find(
+      (node) => videoMediaDetails(node).length
+    ) ?? data;
   const rawMedia = videoMediaDetails(source);
   const mediaItems = rawMedia.map(bestMp4Variant).filter(Boolean);
   if (!mediaItems.length) {

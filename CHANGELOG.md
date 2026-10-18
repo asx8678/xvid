@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.0.2
+
+- Downloading from a quote post whose only video is the quoted post's (for
+  example on a post's Quotes page) works again. X's API now returns the
+  quoted post as `quoted_tweet` instead of `quoted_status`, so the button
+  said "No downloadable video was found in that post."
+
 ## 4.0.1
 
 - Clicking the button in an x.com tab that stayed open while the extension
