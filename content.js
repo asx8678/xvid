@@ -20,8 +20,10 @@ let lastPost = null;
 
 // Fixed literal, safe for innerHTML: x.com serves no trusted-types CSP
 // directives, and Chrome ≥130 exempts isolated worlds from page CSP anyway.
+// Sized by its own attributes, so no stylesheet rule is ever tested against
+// X's own icons.
 const ICON_SVG =
-  '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-5 5a1 1 0 0 1-1.414 0l-5-5a1 1 0 1 1 1.414-1.414L11 13.586V3a1 1 0 0 1 1-1zM5 20a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5z"/></svg>';
+  '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" pointer-events="none"><path d="M12 2a1 1 0 0 1 1 1v10.586l3.293-3.293a1 1 0 1 1 1.414 1.414l-5 5a1 1 0 0 1-1.414 0l-5-5a1 1 0 1 1 1.414-1.414L11 13.586V3a1 1 0 0 1 1-1zM5 20a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H5z"/></svg>';
 
 // The post's own permalink (timestamp link first); a nested quote's links
 // belong to the quote.
@@ -71,9 +73,13 @@ function addButton(post) {
 
 function onActivity(event) {
   const post = event.target instanceof Element ? event.target.closest(SEL_TWEET) : null;
-  // The pointer crosses many elements inside one post; its first entry is enough.
-  if (event.type === 'pointerover' && post === lastPost) return;
-  lastPost = post;
+  // Pointer and focus moves inside one post fire many events; its first entry
+  // is enough. A video (re)starting checks only its own post and leaves this
+  // alone, so X replaying short videos never causes extra checks.
+  if (event.type !== 'play') {
+    if (post === lastPost) return;
+    lastPost = post;
+  }
   // Outer posts too: a quoted video also gives the post quoting it a button.
   for (let p = post; p; p = p.parentElement?.closest(SEL_TWEET)) addButton(p);
 }
@@ -124,9 +130,9 @@ function onClick(event) {
           : response?.err || chrome.runtime.lastError?.message || 'Download failed'
       );
     });
-  } catch (err) {
+  } catch {
     // Throws synchronously once the extension was reloaded under this page.
-    setState(btn, 'err', err?.message || 'Download failed');
+    setState(btn, 'err', 'Extension was updated. Reload this page.');
   }
 }
 

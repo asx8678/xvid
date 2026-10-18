@@ -1,6 +1,6 @@
 {
   "name": "xhelper",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "private": true,
   "description": "xHelper - Manifest V3 Chrome extension that downloads X.com videos",
   "engines": {

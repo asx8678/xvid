@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "xHelper",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Adds a download button to X.com videos that always saves the highest-quality MP4.",
   "homepage_url": "https://github.com/asx8678/xvid",
   "minimum_chrome_version": "105",

@@ -16,12 +16,6 @@
     opacity 0.15s ease;
 }
 
-.xvd svg {
-  width: 18px;
-  height: 18px;
-  pointer-events: none;
-}
-
 .xvd:hover,
 .xvd:focus-visible {
   color: #1d9bf0;

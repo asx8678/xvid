@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.0.1
+
+- Clicking the button in an x.com tab that stayed open while the extension
+  was updated or reloaded now says "Extension was updated. Reload this page."
+  instead of the raw "Extension context invalidated." error.
+- A video starting or replaying no longer resets the "same post" check for
+  the post under the pointer, so X replaying short videos causes no extra
+  checks.
+- The download icon is sized by its own SVG attributes, so the stylesheet no
+  longer has a rule that X's own icons are checked against.
+- Both resource changes are microsecond-level: measured on x.com, 4.0.0
+  already cost about 0.0015% of one CPU core during constant mouse movement,
+  and nothing while idle.
+
 ## 4.0.0
 
 Video download only, and no work while you browse.
