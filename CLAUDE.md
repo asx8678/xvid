@@ -8,7 +8,9 @@ keep it doing no work while the user browses.
 
 There is no build step — the repo root loads directly as an unpacked
 extension (`chrome://extensions` → Developer mode → Load unpacked). There are
-no automated tests; verify changes manually on x.com (see README.md).
+no automated tests; verify changes by hand on x.com: a video post, a GIF, a
+multi-video post, a quote of a video, Alt/Option-click Save As (and cancelling
+it), and a retry after a failure.
 
 ```bash
 npm ci --ignore-scripts # Node.js 24 LTS, >=24.15 within 24.x; dev deps only
@@ -35,6 +37,8 @@ No runtime dependencies:
 
 - Every release bumps the version in `manifest.json` and `package.json` and
   adds a `CHANGELOG.md` entry.
+- `README.md` states each file's line count (`wc -l`); update it whenever
+  those files change.
 - Commit style: `type: vX.Y.Z — summary`.
 - Finished work is committed and pushed to `origin/main` once lint and format
   checks pass.

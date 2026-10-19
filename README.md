@@ -1,59 +1,59 @@
 # xHelper
 
-A minimal Chrome/Chromium Manifest V3 extension that adds a download button
-to videos on x.com. It always saves the highest-quality MP4 the post exposes.
-No popup, no settings, and no background work while you browse.
+A Chrome extension that adds a download button to videos on x.com and saves
+the highest-quality MP4.
 
-## Use
+## How it works
 
-- Point at a post with a video (or let the video start playing) and a
-  download icon appears in its action bar. Click it to save the best MP4;
-  Alt/Option-click opens Save As.
-- The icon turns green when the download starts and red on failure — hover it
-  for the reason.
-- Multi-video posts download every video (`_m1`, `_m2`, … filename suffixes).
-- Quotes and replies without their own video download the quoted or parent
-  post's video.
+When you point at a post with a video, or its video starts playing, a download
+icon appears in the post's action bar. Clicking it sends the post ID to the
+extension's service worker, which looks the post up through X's public embed
+API, picks the highest-bitrate MP4 and saves it with Chrome's downloads. On a
+post without its own video, such as a quote, it saves the quoted post's video,
+or else the parent post's.
 
-Filenames look like `@user_1234567890_1280x720.mp4`.
+The whole extension is 352 lines (277 without comments and blank lines), with
+no dependencies and no build step:
 
-## How it stays light
+| File            | Lines | Job                                 |
+| --------------- | ----: | ----------------------------------- |
+| `content.js`    |   143 | adds the button, sends the post ID  |
+| `background.js` |   141 | finds the best MP4 and downloads it |
+| `content.css`   |    41 | button style                        |
+| `manifest.json` |    27 | permissions and wiring              |
 
-- The content script has no MutationObserver, timers or page scans. It only
-  reacts when the pointer or keyboard focus enters a post, or a video starts
-  playing, and then checks just that post.
-- The tweet ID is read when you click. The service worker sleeps until then,
-  looks the post up through X's public embed endpoint, and hands the MP4 to
-  Chrome's downloads.
-- Nothing runs on other sites. Permissions: `downloads`, plus the lookup host
-  `cdn.syndication.twimg.com`.
+## Why it's light
+
+- It doesn't watch the page: no MutationObserver, polling timers or page
+  scans. It reacts only when the pointer or keyboard focus enters a post, or a
+  video starts playing, and then checks just that post.
+- The service worker sleeps until you click the button.
+- It runs only on x.com. Apart from that it asks only for `downloads` and
+  access to `cdn.syndication.twimg.com`, the post lookup.
+- Measured on x.com: about 0.0015% of one CPU core while the mouse moves
+  constantly, and nothing while idle.
 
 ## Install
 
-1. Open `chrome://extensions` (or the equivalent in Edge/Brave).
-2. Enable **Developer mode**.
-3. Click **Load unpacked** and select this folder.
+1. Get the code: `git clone https://github.com/asx8678/xvid.git`, or download
+   the ZIP from GitHub and unzip it.
+2. Open `chrome://extensions` (Edge, Brave and other Chromium browsers work
+   too) and turn on **Developer mode**.
+3. Click **Load unpacked** and select the folder that contains
+   `manifest.json`.
+4. Reload any open x.com tabs.
 
-After reloading or updating the extension, also reload open x.com tabs.
+To update, replace the files (or `git pull`), click the reload icon on the
+extension's card in `chrome://extensions`, then reload x.com tabs.
 
-## Development
+## Use
 
-No build step and no runtime dependencies. Lint and format checks use
-Node.js 24 LTS (24.15 or newer within 24.x):
-
-```bash
-npm ci --ignore-scripts
-npm run lint
-npm run format:check
-```
-
-There are no automated tests. Check changes by hand on x.com: a video post,
-a GIF, a multi-video post, a quote of a video, Alt/Option-click Save As (and
-cancelling it), and a retry after a failure.
-
-## Limitations
-
-- Only video/GIF MP4s exposed by X's embed metadata endpoint can be saved.
-  Private, restricted, deleted or DRM-protected posts may not expose them.
-- X changes its markup often. If the button stops appearing, update the
-  selectors at the top of `content.js`.
+- Point at a video post and click the download icon at the end of its
+  reply/repost/like row. Alt/Option-click to choose where to save.
+- The icon turns green when the download starts and red if it fails. Hover
+  over it to see why.
+- GIFs save as MP4. A post with several videos saves all of them. Files are
+  named like `@user_1234567890_1280x720.mp4` (`_m1`, `_m2`, … for several).
+- Private, deleted and restricted posts usually can't be downloaded. If the
+  button stops appearing, X has likely changed its markup; the selectors are
+  at the top of `content.js`.

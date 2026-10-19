@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.0.3
+
+- The README is now short: how the extension works, why it is light, its line
+  count, and how to install and use it. The manual test checklist moved to
+  `CLAUDE.md`.
+- Removed `.prettierignore`: Prettier already formats `package-lock.json` the
+  way npm writes it.
+- No changes to the extension itself.
+
 ## 4.0.2
 
 - Downloading from a quote post whose only video is the quoted post's (for
