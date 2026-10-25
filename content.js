@@ -6,13 +6,23 @@
 // it or its video starts playing, and the tweet ID is read when it's clicked.
 
 // --- X.com DOM selectors (fragile — first place to check when things break) --
+// One post. A post quoted inside it matches too, so code checks ownership
+// with closest() before trusting a link or a row.
 const SEL_TWEET = '[data-testid="tweet"]';
+// Any link to a post (photo/video links carry the post's ID too).
 const SEL_TWEET_LINK = 'a[href*="/status/"], a[href*="/statuses/"]';
+// The timestamp link: the post's own permalink, tried before any other link.
 const SEL_TIMED_LINK = 'a[href*="/status/"]:has(time), a[href*="/statuses/"]:has(time)';
+// The reply/repost/like row is a role="group"; some other widgets are too.
 const SEL_GROUP = '[role="group"]';
+// Controls in that row: four or more tell it apart from other groups.
+const SEL_ACTION = 'button, [role="button"], a[href]';
+// X plays both videos and GIFs in a <video>; only such posts get a button.
+const SEL_VIDEO = 'video';
 // -----------------------------------------------------------------------------
 
 const IDLE_TITLE = 'Download video (Alt/Option-click for Save As)';
+const IDLE_LABEL = 'Download video. Alt or Option-click opens Save As.';
 const RESULT_MS = 3000;
 const buttons = new WeakSet(); // our buttons (page elements can't forge membership)
 const resetTimers = new WeakMap();
@@ -46,10 +56,7 @@ function findActionBar(post) {
     const group = groups[index];
     if (group.closest(SEL_TWEET) !== post) continue;
     fallback ??= group;
-    if (
-      group.children.length >= 4 &&
-      group.querySelectorAll('button, [role="button"], a[href]').length >= 4
-    ) {
+    if (group.children.length >= 4 && group.querySelectorAll(SEL_ACTION).length >= 4) {
       return group;
     }
   }
@@ -57,7 +64,7 @@ function findActionBar(post) {
 }
 
 function addButton(post) {
-  if (!post.querySelector('video')) return;
+  if (!post.querySelector(SEL_VIDEO)) return;
   const bar = findActionBar(post);
   if (!bar || [...bar.children].some((child) => buttons.has(child))) return;
 
@@ -65,7 +72,7 @@ function addButton(post) {
   btn.type = 'button';
   btn.className = 'xvd';
   btn.title = IDLE_TITLE;
-  btn.setAttribute('aria-label', 'Download video. Alt or Option-click opens Save As.');
+  btn.setAttribute('aria-label', IDLE_LABEL);
   btn.innerHTML = ICON_SVG;
   buttons.add(btn);
   bar.appendChild(btn);
@@ -84,14 +91,16 @@ function onActivity(event) {
   for (let p = post; p; p = p.parentElement?.closest(SEL_TWEET)) addButton(p);
 }
 
-// busy → ok/err → idle. Clicks are ignored while busy, so a reply always
-// belongs to the current attempt.
+// busy → ok/part/err → idle. Clicks are ignored while busy, so a reply always
+// belongs to the current attempt. part: some of several videos were saved.
 function setState(btn, state, title) {
   clearTimeout(resetTimers.get(btn));
-  btn.classList.remove('xvd--busy', 'xvd--ok', 'xvd--err');
+  btn.classList.remove('xvd--busy', 'xvd--ok', 'xvd--part', 'xvd--err');
   if (state) btn.classList.add(`xvd--${state}`);
   btn.title = title;
-  if (state === 'ok' || state === 'err') {
+  // Screen readers get the same status the tooltip shows.
+  btn.setAttribute('aria-label', state ? title : IDLE_LABEL);
+  if (state && state !== 'busy') {
     resetTimers.set(
       btn,
       setTimeout(() => setState(btn, '', IDLE_TITLE), RESULT_MS)
@@ -119,16 +128,17 @@ function onClick(event) {
   setState(btn, 'busy', 'Downloading…');
   try {
     chrome.runtime.sendMessage({ action: 'download', id, saveAs }, (response) => {
-      const ok = !chrome.runtime.lastError && response?.ok;
-      setState(
-        btn,
-        ok ? 'ok' : 'err',
-        ok
-          ? saveAs
-            ? 'Save As opened'
-            : 'Download started'
-          : response?.err || chrome.runtime.lastError?.message || 'Download failed'
-      );
+      const error = chrome.runtime.lastError; // reading it also silences Chrome's warning
+      if (!error && response?.ok) {
+        setState(btn, 'ok', saveAs ? 'Save As opened' : 'Download started');
+      } else {
+        // Red only when nothing was saved; amber when some videos were.
+        setState(
+          btn,
+          !error && response?.saved > 0 ? 'part' : 'err',
+          response?.err || error?.message || 'Download failed'
+        );
+      }
     });
   } catch {
     // Throws synchronously once the extension was reloaded under this page.

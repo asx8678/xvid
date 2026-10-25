@@ -33,6 +33,13 @@
   background-color: rgba(0, 186, 124, 0.12);
 }
 
+.xvd--part,
+.xvd--part:hover,
+.xvd--part:focus-visible {
+  color: #ffad1f;
+  background-color: rgba(255, 173, 31, 0.12);
+}
+
 .xvd--err,
 .xvd--err:hover,
 .xvd--err:focus-visible {

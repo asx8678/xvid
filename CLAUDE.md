@@ -30,7 +30,7 @@ No runtime dependencies:
   focus enters it or its video starts playing. The tweet ID is read on click.
 - `content.css` — download button styling.
 - `background.js` — service worker. Resolves the post via the syndication API
-  (falling back to the quoted, then parent post), picks the best MP4 variant,
+  (falling back to the quoted post), picks the best MP4 variant,
   and downloads via `chrome.downloads`.
 
 ## Conventions & Patterns

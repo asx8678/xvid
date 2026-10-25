@@ -1,6 +1,6 @@
 {
   "name": "xhelper",
-  "version": "4.0.3",
+  "version": "4.0.4",
   "private": true,
   "description": "xHelper - Manifest V3 Chrome extension that downloads X.com videos",
   "engines": {
@@ -15,7 +15,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.10.0",
-    "globals": "^15.14.0",
+    "globals": "^17.13.0",
     "prettier": "^3.5.3"
   }
 }

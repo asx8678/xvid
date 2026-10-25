@@ -1,5 +1,34 @@
 # Changelog
 
+## 4.0.4
+
+- **No more parent-post fallback.** A reply's parent is a separate post on the
+  page, so its video is never the one beside the button; the fallback could
+  only save a video you weren't looking at. The quoted-post fallback stays.
+- **Partial downloads are reported.** When a post has several videos and one
+  fails after others started, the button turns amber and says "Saved 1 of 2
+  videos. Video 2: …" instead of a plain red failure. Red now always means
+  nothing was saved. A retry still saves every video again.
+- Withheld or restricted posts, which the lookup returns as a
+  `TweetTombstone`, now say "This post is unavailable or restricted." instead
+  of "No downloadable video was found in that post."
+- The lookup sends the token X's own embed derives from the post ID, instead of
+  relying on the endpoint accepting any value.
+- The button's accessible label follows its tooltip ("Download started", the
+  error reason), then returns to the idle label, so screen readers can read
+  the result.
+- `content.js`: the remaining inline X.com selectors (`video`, the action-row
+  controls) are named constants, and every selector has a comment.
+- Tooling: ESLint checks `background.js` with service-worker globals, so a
+  stray `window` or `document` is an error (`globals` 15 → 17, whose
+  service-worker set includes `AbortSignal`). CI's token is read-only
+  (`permissions: contents: read`).
+- Checked with gdp-wired outside the repo: the button's state machine (one
+  request in flight, every reply lands on the click that sent it, every result
+  resets), the report's colours and `bestMp4Variant()` are proven, and the
+  shipped `content.js` and `bestMp4Variant()` match those models on random
+  runs.
+
 ## 4.0.3
 
 - The README is now short: how the extension works, why it is light, its line

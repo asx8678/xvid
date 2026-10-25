@@ -2,9 +2,11 @@ const VIDEO_TYPES = new Set(['video', 'animated_gif']);
 const REQUEST_TIMEOUT_MS = 12_000;
 const TWEET_ID_RE = /^\d{5,25}$/;
 
+const UNAVAILABLE = 'This post is unavailable or restricted.';
+
 const LOOKUP_ERRORS = {
-  401: 'This post is unavailable or restricted.',
-  403: 'This post is unavailable or restricted.',
+  401: UNAVAILABLE,
+  403: UNAVAILABLE,
   404: 'That post could not be found.',
   429: 'Rate limited by X/Twitter. Wait a moment and try again.',
 };
@@ -26,26 +28,41 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 
 async function downloadTweetMedia(tweetId, saveAs) {
   const metadata = await fetchTweetMetadata(tweetId);
+  const total = metadata.mediaItems.length;
 
   // Sequential keeps multi-media Save As dialogs usable.
   for (const [index, item] of metadata.mediaItems.entries()) {
-    await chrome.downloads.download({
-      url: item.url,
-      filename: buildFilename(metadata, item, index),
-      conflictAction: 'uniquify',
-      saveAs,
-    });
+    try {
+      await chrome.downloads.download({
+        url: item.url,
+        filename: buildFilename(metadata, item, index),
+        conflictAction: 'uniquify',
+        saveAs,
+      });
+    } catch (err) {
+      if (!index) throw err;
+      // Some videos already started: say how many, not a plain failure. A retry
+      // saves them all again (uniquify keeps both copies).
+      const reason = err?.message || 'Download failed';
+      return {
+        ok: false,
+        saved: index,
+        err: `Saved ${index} of ${total} videos. Video ${index + 1}: ${reason}`,
+      };
+    }
   }
 
   return { ok: true };
 }
 
 async function fetchTweetMetadata(tweetId) {
+  // The endpoint requires a token; send the one X's own embed derives from the
+  // ID, rather than relying on it accepting any value.
+  const token = ((Number(tweetId) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, '');
   let response;
   try {
-    // The endpoint requires a token parameter but accepts any value.
     response = await fetch(
-      `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&token=${Date.now()}`,
+      `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&token=${token}`,
       { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), cache: 'no-store' }
     );
   } catch (err) {
@@ -68,12 +85,16 @@ async function fetchTweetMetadata(tweetId) {
     throw new Error('X/Twitter returned invalid JSON for that post.');
   }
 
+  // A withheld or restricted post comes back as a tombstone, not an error.
+  if (data?.__typename === 'TweetTombstone') throw new Error(UNAVAILABLE);
+
   // Prefer the post's own video, then the quoted post's (it is the one visibly
-  // embedded), then the reply parent's, so a button on a media-less quote or
-  // reply still downloads the referenced video. The API names the quoted post
-  // quoted_tweet; quoted_status is its older name.
+  // embedded), so a button on a media-less quote still downloads the quoted
+  // video. Never the reply parent's: the parent is a separate post on the page,
+  // so its video is never the one beside this button. The API names the quoted
+  // post quoted_tweet; quoted_status is its older name.
   const source =
-    [data, data?.quoted_tweet, data?.quoted_status, data?.parent].find(
+    [data, data?.quoted_tweet, data?.quoted_status].find(
       (node) => videoMediaDetails(node).length
     ) ?? data;
   const rawMedia = videoMediaDetails(source);
@@ -125,6 +146,7 @@ function bestMp4Variant(media) {
     const [w, h] = resolution.split('x');
     const area = (Number(w) || 0) * (Number(h) || 0);
 
+    // `!best` keeps a lone bitrate-0 variant: a GIF has only that one.
     if (!best || bitrate > best.bitrate || (bitrate === best.bitrate && area > best.area)) {
       best = { url: variant.url, bitrate, resolution, area };
     }
