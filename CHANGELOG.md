@@ -1,5 +1,24 @@
 # Changelog
 
+## 4.0.5
+
+- **Button placement is proven in the repo.** `npm run prove` runs
+  `proofs/placement.mts`: gdp-wired proves that a post shows at most one
+  download button, that checks never exceed the posts the pointer or focus
+  entered plus the videos played, and that entering a post or playing its
+  video leaves a button on it and on the post quoting it. The shipped
+  `content.js` runs on a small fake page and matches the rule on random runs,
+  and four bugs (no duplicate check, no `lastPost` check, a play moving
+  `lastPost`, no button on quoting posts) are each refused with a run.
+- A known gap, now written down: if a post's video mounts, or X redraws its
+  action bar, after the pointer entered it, the button waits for the next play
+  or for the pointer to re-enter.
+- One button per post assumes `findActionBar` never moves from its fallback
+  group to the real reply/repost/like row for the same post. If X ever renders
+  them in that order, a post can show two buttons.
+- CI runs `npm run prove`. `gdp-wired` is a dev dependency only.
+- No changes to the extension itself.
+
 ## 4.0.4
 
 - **No more parent-post fallback.** A reply's parent is a separate post on the
